@@ -23,7 +23,7 @@ Example Claude Code / Desktop MCP config (``.mcp.json``)::
     {"mcpServers": {"vectorvault": {
         "command": "/path/to/repo/.venv/bin/vectorvault-mcp",
         "env": {"AWS_PROFILE": "<your-profile>", "VECTORVAULT_ROLE": "planner",
-                "VECTORVAULT_AGENT_ID": "claude-code"}}}}
+                "VECTORVAULT_AGENT_ID": "claude-vv"}}}}
 """
 from __future__ import annotations
 

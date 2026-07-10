@@ -82,9 +82,9 @@ CloudTrail**. Without `--role`, `vv` uses ambient credentials.
 
 ```bash
 # Claude Code writing as the planner:
-... scripts/vv.py --role planner --agent-id claude-code store "..." --team acme --task dd --type procedural
+... scripts/vv.py --role planner --agent-id claude-vv store "..." --team acme --task dd --type procedural
 # Grok CLI reading as the researcher:
-... scripts/vv.py --role researcher --agent-id grok-cli retrieve "..." --task dd
+... scripts/vv.py --role researcher --agent-id grok-vv retrieve "..." --task dd
 ```
 
 Roles enforce **index isolation** (the security boundary — design-doc §5): planner and
@@ -166,6 +166,44 @@ for the full version.)
 
 ---
 
+## Agent identity convention (normative)
+
+`agent_id` is self-asserted (design-doc §5 known limitations), so a **naming convention
+is what keeps attribution, CloudTrail sessions, and supersession chains unambiguous**
+once multiple sessions and projects share the vault. The rules:
+
+1. **Interactive agent sessions:** `<agent>-<project-slug>` — lowercase kebab.
+   `<agent>` = the model/CLI family (`claude`, `grok`, `gemma`, …); `<project-slug>` =
+   the registered short slug of the project the session is working in. One session, one
+   project, one id. Never reuse an id across projects — a Claude session in VectorVault
+   is `claude-vv`; the same person's Claude session in the acme repo is `claude-acme`.
+2. **Utility / batch processes:** `<purpose>-bot` (e.g. `ingest-bot`) — they act *for* a
+   project, not *as* a session.
+3. **Test & probe processes:** `e2e-*` for the test harness, `*-probe` for ad-hoc
+   inspection. Never write durable memories under these.
+4. **Slugs are registered** in the vault's live directory (team `vectorvault`,
+   task `agent-directory`) — check there before minting a new one.
+
+| Project (examples) | Slug | Example ids |
+|---|---|---|
+| VectorVault itself | `vv` | `claude-vv`, `grok-vv`, `gemma-vv` |
+| Acme payments platform | `acme` | `claude-acme`, `grok-acme` |
+| Internal tooling repo | `tools` | `claude-tools`, `grok-tools` |
+
+**Legacy ids** (anything minted before you adopt this convention) remain valid in
+history — never rewrite old memories. Record the old→new mapping in your agent
+directory and move forward under the new ids.
+
+**Where to set it:**
+
+- **Claude Code (MCP):** per-project `.mcp.json` → `"VECTORVAULT_AGENT_ID": "claude-<slug>"`.
+- **Grok:** use **project scope**, not user scope, so the id tracks the project:
+  `grok mcp add --scope project -e VECTORVAULT_AGENT_ID=grok-<slug> … vectorvault -- <server>`
+  (a user-scope config stamps one id onto every project — the exact collision this
+  convention exists to prevent).
+- **`vv` CLI:** `--agent-id <agent>-<slug>` (the `vv-cli` default is fine for ad-hoc
+  human use, not for agent sessions).
+
 ## Metadata conventions
 
 - **`team_id`** — isolation scope; keep it stable across a team.
@@ -193,7 +231,7 @@ for the full version.)
 ## Cost & housekeeping
 
 - VectorVault operations are cheap: embeddings are ~$0.00002/1K tokens (cached), storage
-  is pay-per-request. The account runs under a **configurable hard monthly cap** (default $20 — `-c budgetUsd`; design-doc §6).
+  is pay-per-request. The account runs under a **$20/month hard cap** (design-doc §6).
 - Memories persist until superseded/archived and GC'd by the daily TTL worker, or set
   a hard TTL at write time (`expires_at`). `archive <key>` retracts on demand.
 - Demo/scratch data: `archive` it, or an admin can `purge_memory(canonical_id)` for a
@@ -230,7 +268,7 @@ run `claude mcp add`):
         "AWS_PROFILE": "<your-profile>",
         "AWS_REGION": "us-west-2",
         "VECTORVAULT_ROLE": "planner",
-        "VECTORVAULT_AGENT_ID": "claude-code"
+        "VECTORVAULT_AGENT_ID": "claude-vv"
       }
     }
   }

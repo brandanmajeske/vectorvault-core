@@ -1,9 +1,9 @@
 # Shared Memory Design for Multi-Agent Systems Using Amazon S3 Vectors
 
-**Version:** 1.7  
+**Version:** 1.8  
 **Date:** July 10, 2026  
 **Author:** Grok (for Brandan M)  
-**Status:** Revised — claude-review.md C1–C4 + P1 security items folded (v1.3–v1.5); hard cost cap $20/month; **deployment Region set to us-west-2** (v1.6); roles hardening — Admin role, auditor tool surface, trust narrowing, §5 known limitations (v1.7); Ready for Implementation  
+**Status:** Revised — claude-review.md C1–C4 + P1 security items folded (v1.3–v1.5); hard cost cap $20/month; **deployment Region set to us-west-2** (v1.6); roles hardening — Admin role, auditor tool surface, trust narrowing, §5 known limitations (v1.7); agent identity naming convention (v1.8); Ready for Implementation  
 **Deployment Region:** **us-west-2** (US West, Oregon). Region-bound resources (KMS key, vector/content buckets) are one-way doors — fixed at first deploy. S3 Vectors and Bedrock Titan Embed v2 are both available there; per-service pricing is equivalent to us-east-1, so the cost model below is unchanged.  
 
 ## 1. Overview
@@ -316,6 +316,8 @@ Metadata filters (e.g., `task_id`) are **application-level scoping** applied at 
 #### Known limitations (accepted, v1.7)
 
 - **`agent_id` is self-asserted.** Any caller may pass any `RoleSessionName`, so CloudTrail attribution identifies *which role* acted with certainty but trusts the caller for *which agent*. Honest-actor bookkeeping, not authentication. Enforcing it would need role-per-agent or `sts:RoleSessionName` conditions — deliberately out of scope at this system's scale.
+
+**Agent identity naming convention (v1.8, normative).** Because `agent_id` is convention-enforced, ids MUST be unambiguous by construction: interactive agent sessions use `<agent>-<project-slug>` (e.g. `claude-vv`, `grok-acme`) — one session, one project, one id, never reused across projects; utility processes use `<purpose>-bot`; test/probe processes use `e2e-*`/`*-probe` and never write durable memories. Slugs are registered in the vault's live agent directory (team `vectorvault`, task `agent-directory`). Full rules + legacy-id mapping: the CLI-agents runbook §"Agent identity convention".
 - **Writes within an index are key-agnostic.** `PutVectors` cannot be IAM-scoped to key prefixes, so any writer role can overwrite *any* key in an index it can reach (including other agents' memories in `shared-team-memory`). Compensating controls: hash-versioned keys, supersession chains, CloudTrail write data events, and S3-Vectors-event reconciliation. The boundary remains the **index**, never the key.
 
 ### Memory Trust Model (v1.5)
@@ -532,6 +534,7 @@ Costs scale primarily with query volume and index size (data-processed charges).
 | 1.4 | Claude (Fable 5) review — findings C2–C4 folded | `list_memories` re-based on DynamoDB `memory-index` + `task_id` GSI; supersession via same-key metadata rewrite (single source of truth); no auto-supersede — explicit `supersedes_key` + `restore_memory`; $20/month hard cost cap |
 | 1.5 | Claude (Fable 5) review — P1 security folded | Memory trust model (`origin` tag, injection screen, memories-are-data rule); CloudTrail write data events + `roleSessionName` attribution; derived content keys (confused-deputy guard); KMS one-way-door checklist; TTL circuit breaker/`DRY_RUN`/DLQ; hash-versioned keys; `expires_at > now` default filter |
 | 1.6 | Deployment Region set (owner, 2026-07-08) | Deploy Region fixed to **us-west-2** (deployment profile default); cost table relabeled; pricing unchanged vs us-east-1. Region-bound resources (KMS, buckets) are one-way doors. |
+| 1.8 | Agent identity convention (owner directive, 2026-07-10) | `agent_id` naming standardized after a live collision (two sessions as `claude-code`; Grok's user-scope config stamping `grok-cli` across projects): sessions = `<agent>-<project-slug>`, utilities = `<purpose>-bot`, tests = `e2e-*`; slugs registered in the vault agent directory; legacy ids preserved in history. Codified in runbook + this §5. |
 | 1.7 | Roles hardening (owner-approved, 2026-07-10) | **MemoryAdminRole** — only human-assumable `DeleteVectors`, for attributed `purge_memory` (`vv purge --role admin`) instead of raw account-admin creds; template check now locks `DeleteVectors` to exactly TTL + Admin. **Auditor tool surface** — read-only verbs across all indexes in `create_memory_tools`/`vv`/MCP (right for low-trust agents, e.g. small local models). **Trust narrowing** — `-c trustedPrincipalArn` now an `ArnLike aws:PrincipalArn` condition (wildcard patterns, SSO-safe). §5 **Known limitations** documented: self-asserted `agent_id`; key-agnostic `PutVectors` within an index. |
 
 ---

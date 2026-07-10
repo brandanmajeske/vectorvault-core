@@ -44,7 +44,7 @@ The server reads its behavior from environment variables:
 | Env var | Purpose | Default |
 |---|---|---|
 | `VECTORVAULT_ROLE` | `planner` \| `researcher` \| `auditor` \| `none` — assumes that scoped IAM role (`auditor` = read-only tools across all indexes) | `planner` |
-| `VECTORVAULT_AGENT_ID` | CloudTrail `RoleSessionName` — attributes your writes | `mcp-agent` |
+| `VECTORVAULT_AGENT_ID` | CloudTrail `RoleSessionName` — attributes your writes. Use `<agent>-<project-slug>` (e.g. `claude-vv`) — see the runbook's [identity convention](using-with-cli-agents.md#agent-identity-convention-normative) | `mcp-agent` |
 | `VECTORVAULT_ENABLE_METRICS` | `1`/`true` to emit `VectorVault/Client` metrics | off |
 | `AWS_PROFILE` / `AWS_REGION` | standard AWS credential resolution | — / `us-west-2` |
 
@@ -60,7 +60,7 @@ The real production path: you ask in English, Claude calls the memory tools over
 claude mcp add vectorvault \
   -e AWS_PROFILE=<your-profile> \
   -e VECTORVAULT_ROLE=planner \
-  -e VECTORVAULT_AGENT_ID=demo-explore \
+  -e VECTORVAULT_AGENT_ID=claude-vv \
   -- "$(pwd)/.venv/bin/vectorvault-mcp"
 ```
 
@@ -112,7 +112,7 @@ SERVER = os.path.abspath(".venv/bin/vectorvault-mcp")
 async def main():
     params = StdioServerParameters(
         command=SERVER,
-        env={**os.environ, "VECTORVAULT_ROLE": "planner", "VECTORVAULT_AGENT_ID": "demo-explore"},
+        env={**os.environ, "VECTORVAULT_ROLE": "planner", "VECTORVAULT_AGENT_ID": "claude-vv"},
     )
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
@@ -144,8 +144,8 @@ memories — the same thing Claude does in Path A, just visible on the wire.
 ## Path C — Same thing with Grok
 
 ```bash
-grok mcp add --scope user \
-  -e AWS_PROFILE=<your-profile> -e VECTORVAULT_ROLE=planner -e VECTORVAULT_AGENT_ID=grok-explore \
+grok mcp add --scope project \
+  -e AWS_PROFILE=<your-profile> -e VECTORVAULT_ROLE=planner -e VECTORVAULT_AGENT_ID=grok-vv \
   vectorvault -- "$(pwd)/.venv/bin/vectorvault-mcp"
 
 grok                            # then ask the same Acme questions
@@ -191,7 +191,7 @@ MODEL = os.environ.get("GEMMA_MODEL", "gemma4:12b")
 
 async def main():
     params = StdioServerParameters(command=SERVER, env={
-        **os.environ, "VECTORVAULT_ROLE": "auditor", "VECTORVAULT_AGENT_ID": "gemma-local"})
+        **os.environ, "VECTORVAULT_ROLE": "auditor", "VECTORVAULT_AGENT_ID": "gemma-vv"})
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -269,7 +269,7 @@ it by **absolute path**:
 cd ~/Projects/my-new-thing          # empty project, unrelated to VectorVault
 claude mcp add vectorvault \
   -e AWS_PROFILE=<your-profile> -e AWS_REGION=us-west-2 \
-  -e VECTORVAULT_ROLE=researcher -e VECTORVAULT_AGENT_ID=my-new-thing \
+  -e VECTORVAULT_ROLE=researcher -e VECTORVAULT_AGENT_ID=claude-mynewthing \
   -- <repo>/.venv/bin/vectorvault-mcp
 claude mcp list                     # vectorvault - ✓ Connected
 ```
@@ -298,7 +298,7 @@ Then register with that command instead of the repo path:
 
 ```bash
 claude mcp add vectorvault \
-  -e AWS_PROFILE=<your-profile> -e VECTORVAULT_ROLE=researcher -e VECTORVAULT_AGENT_ID=my-new-thing \
+  -e AWS_PROFILE=<your-profile> -e VECTORVAULT_ROLE=researcher -e VECTORVAULT_AGENT_ID=claude-mynewthing \
   -- ~/.venvs/vectorvault/bin/vectorvault-mcp      # or just `vectorvault-mcp` if on PATH
 ```
 
@@ -319,7 +319,7 @@ instead of registering globally — Claude Code auto-loads it:
         "AWS_PROFILE": "<your-profile>",
         "AWS_REGION": "us-west-2",
         "VECTORVAULT_ROLE": "researcher",
-        "VECTORVAULT_AGENT_ID": "my-new-thing"
+        "VECTORVAULT_AGENT_ID": "claude-mynewthing"
       }
     }
   }
@@ -406,7 +406,7 @@ The two failure modes we've actually hit:
   there. Point it at the **absolute** path to `vectorvault-mcp`, and mind the exact
   directory — a standalone install lives under `~/.venvs/vectorvault/…` (**plural**
   `.venvs`), which is easy to mistype as `.venv`. Re-add with
-  `grok mcp add --scope user … vectorvault -- <abs path>`.
+  `grok mcp add --scope project … vectorvault -- <abs path>`.
 - **Connects, but tool calls fail** with credential / SSM errors — the server has no AWS
   credentials or role. The `[mcp_servers.vectorvault.env]` block must set `AWS_PROFILE`
   (and usually `VECTORVAULT_ROLE` / `VECTORVAULT_AGENT_ID`). **Without an `env` block the
@@ -416,7 +416,7 @@ The two failure modes we've actually hit:
   [mcp_servers.vectorvault.env]
   AWS_PROFILE = "<your-profile>"
   VECTORVAULT_ROLE = "researcher"
-  VECTORVAULT_AGENT_ID = "grok-cli"
+  VECTORVAULT_AGENT_ID = "grok-vv"
   ```
 
 > **`doctor` verifies connect / handshake / tools — not *which* role or agent_id you

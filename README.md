@@ -70,9 +70,9 @@ via IAM). So CLI-based agents (Claude Code, a Grok CLI, a human) share memory ju
 shelling out to `scripts/vv.py` — each CLI *is* its own LLM:
 
 ```bash
-AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv.py --role planner --agent-id claude-code \
+AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv.py --role planner --agent-id claude-vv \
   store "Decision: benchmark providers on \$/kg." --team acme --task q2 --type procedural
-AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv.py --role researcher --agent-id grok-cli \
+AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv.py --role researcher --agent-id grok-vv \
   retrieve "what's the plan?" --task q2
 ```
 

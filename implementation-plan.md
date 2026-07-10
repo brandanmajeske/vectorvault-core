@@ -1,9 +1,10 @@
 # VectorVault v1 Implementation Plan
 
-**Version:** 1.6  
+**Version:** 1.7  
 **Date:** July 10, 2026  
 **Status:** Approved  
-**Based on:** [design-doc.md](design-doc.md) v1.7
+**Based on:** [design-doc.md](design-doc.md) v1.8
+**Changelog (v1.7):** Agent identity convention codified (design-doc v1.8): session ids = `<agent>-<project-slug>` (claude-vv, grok-acme, …), utilities `<purpose>-bot`, tests `e2e-*`; slug registry = vault agent-directory; Grok configs move to project scope. Runbook §"Agent identity convention" is the operational reference.
 **Changelog (v1.6):** Roles hardening (design-doc v1.7, owner-approved 2026-07-10) — `MemoryAdminRole` (only human-assumable `DeleteVectors`; attributed `purge` via `vv purge --role admin`; SSM `role/admin-arn`); auditor read-only tool surface in `create_memory_tools`/`vv`/MCP; `-c trustedPrincipalArn` upgraded to `ArnLike aws:PrincipalArn` condition patterns; template check locks `DeleteVectors` to TTL + Admin; design-doc §5 known-limitations note (self-asserted `agent_id`, key-agnostic `PutVectors`).
 **Changelog (v1.5):** PR 4 delivered (merged PR #5) — agent tool adapters `vectorvault.tools` (Anthropic/OpenAI/LangChain), `get_memory`/`archive_memory` verbs, citation + origin-skepticism system prompt, `memory_client_for_agent` credential helper (Q6/Q7/Q8/S1). PR 5 delivered — `monitoring-stack.ts` dashboard + §7 alarms → SNS (O6), opt-in `VectorVault/Client` custom metrics, boto3 layer as `-c boto3LayerArn` knob + build script, opt-in integration tests.
 **Changelog (v1.1):** Rerank removed from v1 for cost (claude-review.md finding C1); context budget trim moved into PR 2; PR 5 re-scoped to observability + integration tests.
