@@ -139,6 +139,7 @@ def to_points(vectors: list[dict], dims: int) -> list[dict]:
             "task": m.get("task_id", "?"), "type": m.get("memory_type", "?"),
             "status": m.get("status", "?"), "version": int(m.get("version", 1) or 1),
             "created": int(m.get("created_at", 0) or 0),
+            "stored_by": m.get("stored_by") or "—",  # real AWS principal (v1.9); — if ambient
             "text": content[:280],  # tooltip preview + star sizing
         }
         if len(content) > 280:

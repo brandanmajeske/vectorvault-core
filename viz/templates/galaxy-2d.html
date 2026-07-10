@@ -479,7 +479,7 @@
     drawer.querySelector('.key').textContent = d.key;
     const when = d.created ? new Date(d.created * 1000).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : '—';
     drawer.querySelector('dl').innerHTML =
-      row('agent', d.agent) + row('team', d.team) + row('task', d.task) +
+      row('agent', d.agent) + row('stored by', d.stored_by) + row('team', d.team) + row('task', d.task) +
       row('type', d.type) + row('status', d.status) + row('version', 'v' + d.version) + row('created', when);
     drawer.querySelector('.body').textContent = d.full || d.text; // full memory, not the preview
     drawer.classList.add('open');
