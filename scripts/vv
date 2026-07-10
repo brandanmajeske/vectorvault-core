@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# vv — launcher for the VectorVault CLI (scripts/vv.py) using the repo venv.
+# Symlink-safe: put `ln -s <repo>/scripts/vv ~/.local/bin/vv` on PATH and run
+# `vv retrieve …` / `vv --galaxy` from anywhere.
+#
+# AWS credentials: uses your environment as-is. If AWS_PROFILE is unset and an
+# untracked `.vvrc` exists at the repo root (e.g. `export AWS_PROFILE=<your-profile>`),
+# it is sourced first — per-machine default without hardcoding anyone's profile.
+set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+REPO="$(dirname "$(dirname "$SELF")")"
+PY="$REPO/.venv/bin/python"
+
+if [[ ! -x "$PY" ]]; then
+  echo "vv: no venv at $REPO/.venv — create it: python -m venv .venv && pip install -e '.[dev]'" >&2
+  exit 1
+fi
+if [[ -z "${AWS_PROFILE:-}" && -f "$REPO/.vvrc" ]]; then
+  # shellcheck source=/dev/null
+  source "$REPO/.vvrc"
+fi
+
+exec "$PY" "$REPO/scripts/vv.py" "$@"

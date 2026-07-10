@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vectorvault"
+version = "0.1.0"
+description = "S3 Vectors shared-memory client for multi-agent AI systems"
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = [
+    # QueryVectors pagination (nextToken) requires boto3 >= 1.43.31 (claude-review Q2/appendix #1/#13).
+    "boto3>=1.43.31",
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+# MCP server (console script `vectorvault-mcp`). Optional — the core client and the
+# TTL Lambda never import it, so it stays out of the runtime/CI dependency set.
+mcp = [
+    "mcp>=1.2",
+]
+# Real-LLM end-to-end tests (tests/e2e). Optional — never imported by the core
+# client or CI. Gemma runs locally via Ollama (no dependency here beyond openai).
+e2e = [
+    "anthropic>=0.40",
+    "openai>=1.40",
+]
+
+[project.scripts]
+vectorvault-mcp = "vectorvault.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+# E501: long lines OK. UP042: (str, Enum) is intentional (explicit .value access).
+ignore = ["E501", "UP042"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+addopts = "-q"
+markers = [
+    "integration: end-to-end tests against a deployed AWS dev stack (opt-in via VECTORVAULT_RUN_INTEGRATION=1; not collected by default)",
+    "e2e: real-LLM tests driving agents (Claude/Grok/Gemma) through the tools (opt-in via VECTORVAULT_RUN_E2E=1; needs a deployed stack; not collected by default)",
+]

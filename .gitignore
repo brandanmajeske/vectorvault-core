@@ -1,0 +1,40 @@
+# Claude Code local settings (per-machine permissions)
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Node / CDK
+node_modules/
+infra/cdk.out/
+cdk.out/
+*.tsbuildinfo
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Memory Galaxy (generated pages + Rust build artifacts; the wasm ships as .b64)
+galaxy-out/
+viz/galaxy3d/target/
+viz/galaxy3d/Cargo.lock
+
+# Machine-local vv defaults (e.g. AWS_PROFILE)
+.vvrc

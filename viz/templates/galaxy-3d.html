@@ -1,0 +1,575 @@
+<title>VectorVault — Memory Galaxy 3D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* Deliberately single-theme: a galaxy lives in the dark. */
+  :root {
+    color-scheme: dark;
+    --bg: #06080f;
+    --panel: rgba(13, 17, 32, 0.88);
+    --line: rgba(142, 162, 255, 0.14);
+    --ink: #dce3f5;
+    --ink-dim: #8b94ad;
+    --accent: #8ea2ff;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); overflow: hidden;
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  #space { position: fixed; inset: 0; cursor: grab; touch-action: none; }
+  #space.dragging { cursor: grabbing; }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 14px 18px 30px;
+    background: linear-gradient(rgba(6,8,15,.92), rgba(6,8,15,0));
+    pointer-events: none;
+  }
+  header * { pointer-events: auto; }
+  h1 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: .24em; text-transform: uppercase; }
+  h1 .vv { color: var(--accent); }
+  #stats { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+  #stats .core { color: #4de8c2; }
+  #controls { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  #search {
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 999px; padding: 6px 14px; font: 13px var(--mono);
+    width: min(200px, 34vw); outline: none;
+  }
+  #search:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(142,162,255,.25); }
+  #search::placeholder { color: var(--ink-dim); }
+  #tour {
+    background: var(--panel); color: var(--accent); border: 1px solid var(--line);
+    border-radius: 999px; padding: 6px 14px; font: 13px var(--mono); cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  #tour:hover, #tour.on { border-color: var(--accent); box-shadow: 0 0 12px rgba(142,162,255,.35); }
+  #tour.on { color: var(--ink); background: rgba(142,162,255,.18); }
+  #tour:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  #legend {
+    position: fixed; left: 14px; bottom: 14px; z-index: 5;
+    display: flex; flex-direction: column; gap: 6px; max-width: 46vw;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+    padding: 4px 12px 4px 8px; font: 12px var(--mono); color: var(--ink);
+    cursor: pointer; user-select: none; width: max-content;
+    transition: opacity .25s, border-color .2s;
+  }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+  .chip .n { color: var(--ink-dim); }
+  .chip.off { opacity: .35; }
+  .chip:hover { border-color: currentColor; }
+  .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  #keys {
+    position: fixed; right: 14px; bottom: 14px; z-index: 5;
+    font: 11px var(--mono); color: var(--ink-dim); text-align: right; line-height: 1.9;
+  }
+  #keys b { color: var(--ink); font-weight: 500; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+
+  #caption {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+    z-index: 5; pointer-events: none; text-align: center;
+    font: 13px var(--mono); color: var(--ink);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+    padding: 7px 18px; opacity: 0; transition: opacity .45s;
+    max-width: 70vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #caption.show { opacity: 1; }
+  #caption .task { color: var(--accent); }
+
+  #tip {
+    position: fixed; z-index: 6; display: none; max-width: 320px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; pointer-events: none; backdrop-filter: blur(6px);
+  }
+  #tip .k { font: 11px var(--mono); color: var(--accent); word-break: break-all; }
+  #tip .m { font: 11px var(--mono); color: var(--ink-dim); margin: 3px 0 6px; }
+  #tip .t { font-size: 12.5px; }
+
+  #drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 7;
+    width: min(400px, 92vw); transform: translateX(105%);
+    transition: transform .32s cubic-bezier(.2,.9,.25,1); overflow-y: auto;
+    background: var(--panel); border-left: 1px solid var(--line); backdrop-filter: blur(10px);
+    padding: 18px 20px 24px;
+  }
+  #drawer.open { transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    #drawer, .chip, #caption, #tour { transition: none; }
+  }
+  #drawer .close {
+    float: right; background: none; border: 1px solid var(--line); color: var(--ink-dim);
+    border-radius: 8px; padding: 2px 10px; cursor: pointer; font-size: 13px;
+  }
+  #drawer .close:hover { color: var(--ink); border-color: var(--accent); }
+  #drawer h2 { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-dim); margin: 4px 0 10px; }
+  #drawer .key { font: 12px var(--mono); color: var(--accent); word-break: break-all; margin-bottom: 12px; }
+  #drawer dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font: 12px var(--mono); margin: 0 0 14px; }
+  #drawer dt { color: var(--ink-dim); } #drawer dd { margin: 0; overflow-wrap: anywhere; }
+  #drawer .body { font-size: 13.5px; border-top: 1px solid var(--line); padding-top: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+</style>
+
+<canvas id="space" aria-label="3D map of shared memories: each star is one memory, positioned by semantic similarity"></canvas>
+
+<header>
+  <h1><span class="vv">VectorVault</span> · Memory Galaxy <span style="color:var(--accent)">3D</span></h1>
+  <div id="stats"></div>
+  <div id="controls">
+    <button id="tour" aria-pressed="false">✦ tour</button>
+    <input id="search" type="search" placeholder="search memories…" aria-label="Search memories">
+  </div>
+</header>
+
+<div id="legend" role="group" aria-label="Filter by agent"></div>
+<div id="keys">
+  <b>drag</b> orbit&nbsp; <b>⇧drag</b> pan&nbsp; <b>scroll</b> zoom<br>
+  <b>←→↑↓</b> orbit&nbsp; <b>WASD</b> pan&nbsp; <b>Q</b>/<b>E</b> zoom&nbsp; <b>R</b> reset&nbsp; <b>T</b> tour
+</div>
+<div id="caption" aria-live="polite"></div>
+<div id="tip" role="tooltip"></div>
+<aside id="drawer" aria-label="Memory detail">
+  <button class="close" aria-label="Close">✕</button>
+  <h2>Memory</h2>
+  <div class="key"></div>
+  <dl></dl>
+  <div class="body"></div>
+</aside>
+
+<script type="application/json" id="data">__DATA__</script>
+<script>
+const CORE_B64 = "__WASM__";
+
+(async () => {
+  const DATA = JSON.parse(document.getElementById('data').textContent);
+  const N = DATA.length;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // --- core: Rust/WASM camera + projection; identical JS math as fallback ------------
+  async function makeCore() {
+    try {
+      const bytes = Uint8Array.from(atob(CORE_B64), c => c.charCodeAt(0));
+      const { instance } = await WebAssembly.instantiate(bytes, {});
+      const e = instance.exports;
+      const ptr = e.init(N);
+      return {
+        kind: 'rust-wasm ⚙',
+        stars: () => new Float32Array(e.memory.buffer, ptr, N * 3),
+        out: () => new Float32Array(e.memory.buffer, e.out_ptr(), N * 5),
+        orbit: (a, b) => e.orbit(a, b), flick: (a, b) => e.flick(a, b),
+        pan: (a, b) => e.pan(a, b),
+        dolly: f => e.dolly(f), keys: (m, dt) => e.keys(m, dt),
+        flyTo: (x, y, z, d) => e.fly_to(x, y, z, d),
+        reset: () => e.reset(), setSpin: s => e.set_spin(s),
+        update: (dt, w, h) => e.update(dt, w, h),
+      };
+    } catch (err) {
+      console.warn('WASM unavailable, using JS core:', err);
+      return jsCore();
+    }
+  }
+
+  function jsCore() { // line-for-line port of the Rust core
+    const LIM = 1.45;
+    const c = { yaw: .7, pitch: .32, dist: 9, tdist: 3.1, tx: 0, ty: 0, tz: 0,
+                ttx: 0, tty: 0, ttz: 0, yv: 0, pv: 0, spin: 0, fpx: 800 };
+    const stars = new Float32Array(N * 3), out = new Float32Array(N * 5);
+    const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+    const api = {
+      kind: 'js fallback', stars: () => stars, out: () => out,
+      orbit(dx, dy) { // direct 1:1 drive while dragging (matches Rust core)
+        const G = .0024;
+        c.yaw += dx * G;
+        c.pitch = clamp(c.pitch + dy * G, -LIM, LIM);
+        c.yv = 0; c.pv = 0;
+      },
+      flick(vx, vy) { // capped throw on release
+        const G = .0024, M = .045;
+        c.yv = clamp(vx * G * .85, -M, M);
+        c.pv = clamp(vy * G * .85, -M, M);
+      },
+      pan(dx, dy) {
+        const wpp = c.dist / c.fpx, sy = Math.sin(c.yaw), cy = Math.cos(c.yaw),
+              sp = Math.sin(c.pitch), cp = Math.cos(c.pitch);
+        const r = [cy, 0, -sy], u = [-sp * sy, cp, -sp * cy];
+        c.ttx -= (r[0] * dx + u[0] * -dy) * wpp;
+        c.tty -= (r[1] * dx + u[1] * -dy) * wpp;
+        c.ttz -= (r[2] * dx + u[2] * -dy) * wpp;
+      },
+      dolly(f) { c.tdist = clamp(c.tdist * f, .35, 14); },
+      keys(m, dt) {
+        const o = 210 * dt, p = 260 * dt;
+        if (m & 1) api.orbit(-o, 0); if (m & 2) api.orbit(o, 0);
+        if (m & 4) api.orbit(0, -o); if (m & 8) api.orbit(0, o);
+        if (m & 16) api.pan(0, p);   if (m & 32) api.pan(0, -p);
+        if (m & 64) api.pan(p, 0);   if (m & 128) api.pan(-p, 0);
+        if (m & 256) api.dolly(1 - 1.6 * dt); if (m & 512) api.dolly(1 + 1.6 * dt);
+      },
+      flyTo(x, y, z, d) { c.ttx = x; c.tty = y; c.ttz = z; c.tdist = clamp(d, .35, 14); },
+      reset() { c.ttx = c.tty = c.ttz = 0; c.tdist = 3.1; c.yv = c.pv = 0; },
+      setSpin(s) { c.spin = s; },
+      update(dt, w, h) {
+        const dtn = Math.min(dt * 60, 3);
+        c.yaw += c.yv * dtn + c.spin * dt;
+        c.pitch = clamp(c.pitch + c.pv * dtn, -LIM, LIM);
+        const damp = Math.pow(.92, dtn); c.yv *= damp; c.pv *= damp;
+        const ch = 1 - Math.pow(.88, dtn);
+        c.dist += (c.tdist - c.dist) * ch;
+        c.tx += (c.ttx - c.tx) * ch; c.ty += (c.tty - c.ty) * ch; c.tz += (c.ttz - c.tz) * ch;
+        const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw),
+              sp = Math.sin(c.pitch), cp = Math.cos(c.pitch);
+        const ex = c.tx + c.dist * cp * sy, ey = c.ty + c.dist * sp, ez = c.tz + c.dist * cp * cy;
+        let fx = c.tx - ex, fy = c.ty - ey, fz = c.tz - ez;
+        const fl = Math.hypot(fx, fy, fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+        let rx = fz, ry = 0, rz = -fx;
+        const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; rz /= rl;
+        const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+        const f = .9 * Math.max(h, 1); c.fpx = f;
+        for (let i = 0; i < N; i++) {
+          const px = stars[i * 3] - ex, py = stars[i * 3 + 1] - ey, pz = stars[i * 3 + 2] - ez;
+          const depth = px * fx + py * fy + pz * fz, o = i * 5;
+          if (depth < .06) { out[o + 2] = 0; out[o + 3] = 0; out[o + 4] = depth; continue; }
+          out[o] = w * .5 + (px * rx + py * ry + pz * rz) * f / depth;
+          out[o + 1] = h * .5 - (px * ux + py * uy + pz * uz) * f / depth;
+          out[o + 2] = clamp(c.dist / depth, .05, 6);
+          out[o + 3] = clamp(1.35 - depth / (c.dist * 1.9), .22, 1);
+          out[o + 4] = depth;
+        }
+      },
+    };
+    return api;
+  }
+
+  const core = await makeCore();
+  core.stars().set(DATA.flatMap(d => [d.x, d.y, d.z]));
+
+  // --- palette + derived ---------------------------------------------------------------
+  const PINNED = { 'ingest-bot': '#ffb45e', 'gemma-local': '#4de8c2', 'grok-cli': '#ff5470',
+                   'grok-explore': '#e06bff', 'claude-code': '#7aa2ff' };
+  const FALLBACK = ['#9dff8e', '#ffd166', '#6ee7ff', '#ff9ecb', '#c3b0ff'];
+  const agents = [...new Set(DATA.map(d => d.agent))];
+  const color = {}; let fi = 0;
+  agents.forEach(a => color[a] = PINNED[a] ?? FALLBACK[fi++ % FALLBACK.length]);
+  DATA.forEach((d, i) => {
+    d.i = i;
+    d.r = 2.4 + Math.min(3, d.text.length / 120) + (d.version - 1) * 1.2;
+    d.phase = (i * 2.399) % (Math.PI * 2);
+    d.dim = d.status !== 'active';
+    d.alpha = 0;
+    d.delay = (i * 137.5) % 900;
+  });
+  const tasks = {};
+  DATA.forEach(d => (tasks[d.task] ??= []).push(d));
+  Object.values(tasks).forEach(g => g.sort((a, b) => a.created - b.created));
+  const clusters = Object.entries(tasks).filter(([, g]) => g.length >= 3).map(([task, g]) => {
+    const cx = g.reduce((s, d) => s + d.x, 0) / g.length;
+    const cy = g.reduce((s, d) => s + d.y, 0) / g.length;
+    const cz = g.reduce((s, d) => s + d.z, 0) / g.length;
+    const spread = Math.max(.06, ...g.map(d => Math.hypot(d.x - cx, d.y - cy, d.z - cz)));
+    return { task, g, cx, cy, cz, spread };
+  });
+
+  document.getElementById('stats').innerHTML =
+    `${N} memories · ${new Set(DATA.map(d => d.team)).size} teams · ${agents.length} agents · ` +
+    `${Object.keys(tasks).length} tasks · core: <span class="core">${core.kind}</span>`;
+
+  // --- legend ----------------------------------------------------------------------------
+  const off = new Set();
+  const legend = document.getElementById('legend');
+  agents.sort((a, b) => DATA.filter(d => d.agent === b).length - DATA.filter(d => d.agent === a).length)
+    .forEach(a => {
+      const n = DATA.filter(d => d.agent === a).length;
+      const chip = document.createElement('button');
+      chip.className = 'chip'; chip.style.color = color[a];
+      chip.innerHTML = `<span class="dot" style="background:${color[a]}"></span>` +
+        `<span style="color:var(--ink)">${a}</span><span class="n">${n}</span>`;
+      chip.onclick = () => { chip.classList.toggle('off'); off.has(a) ? off.delete(a) : off.add(a); };
+      legend.appendChild(chip);
+    });
+
+  // --- canvas ------------------------------------------------------------------------------
+  const cv = document.getElementById('space'), cx = cv.getContext('2d');
+  let W, H, dpr;
+  function resize() {
+    dpr = devicePixelRatio || 1;
+    W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    makeBg();
+  }
+  let bg;
+  function makeBg() {
+    bg = document.createElement('canvas');
+    bg.width = W * dpr * 1.5; bg.height = H * dpr * 1.5;
+    const b = bg.getContext('2d');
+    b.scale(dpr, dpr);
+    let seed = 7;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 500; i++) {
+      const x = rnd() * W * 1.5, y = rnd() * H * 1.5, r = rnd() * 1.1 + .2;
+      b.fillStyle = `rgba(${180 + rnd() * 60},${190 + rnd() * 50},255,${rnd() * .5 + .1})`;
+      b.beginPath(); b.arc(x, y, r, 0, 7); b.fill();
+    }
+  }
+
+  // --- state ---------------------------------------------------------------------------------
+  let hover = null, selected = null, query = '';
+  let camYawProxy = 0; // for bg parallax (accumulated from orbit input)
+  const t0 = performance.now();
+  const INTRO = reduced ? 0 : 1300;
+  let lastInput = t0;
+  const visible = d => !off.has(d.agent) &&
+    (!query || (d.text + ' ' + d.task + ' ' + d.key).toLowerCase().includes(query));
+  const matches = d => query && (d.text + ' ' + d.task + ' ' + d.key).toLowerCase().includes(query);
+
+  const meteors = [];
+  let nextMeteor = t0 + 3000;
+
+  // constellation reveal
+  const reveal = {};
+
+  // keyboard
+  const KEYMAP = { ArrowLeft: 1, ArrowRight: 2, ArrowUp: 4, ArrowDown: 8,
+                   w: 16, s: 32, a: 64, d: 128, q: 256, e: 512 };
+  let keyMask = 0;
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    const k = KEYMAP[e.key] ?? KEYMAP[e.key.toLowerCase()];
+    if (k) { keyMask |= k; lastInput = performance.now(); stopTour(); e.preventDefault(); }
+    else if (e.key === 'r' || e.key === 'R') { core.reset(); lastInput = performance.now(); }
+    else if (e.key === 't' || e.key === 'T') { tourTimer ? stopTour() : startTour(); }
+    else if (e.key === 'Escape') { selected = null; closeDrawer(); stopTour(); }
+  });
+  addEventListener('keyup', e => {
+    const k = KEYMAP[e.key] ?? KEYMAP[e.key.toLowerCase()];
+    if (k) keyMask &= ~k;
+  });
+
+  // --- render loop ------------------------------------------------------------------------------
+  let lastT = t0;
+  function frame(t) {
+    const dt = Math.min(0.1, (t - lastT) / 1000 || 0.016);
+    lastT = t;
+
+    if (keyMask) core.keys(keyMask, dt);
+    // idle auto-spin
+    const idle = t - lastInput > 6000 && !selected && !tourTimer;
+    core.setSpin(reduced ? 0 : (tourTimer ? 0.10 : idle ? 0.05 : 0));
+    core.update(dt, W, H);
+    const out = core.out();
+
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx.clearRect(0, 0, W, H);
+
+    // parallax dust
+    cx.globalAlpha = 0.85;
+    cx.drawImage(bg, -W * .25 + Math.sin(camYawProxy) * 30, -H * .25 + Math.cos(camYawProxy) * 18, W * 1.5, H * 1.5);
+    cx.globalAlpha = 1;
+
+    // meteors
+    if (!reduced) {
+      if (t > nextMeteor) {
+        meteors.push({ x: Math.random() * W * 1.2 - W * .1, y: -30,
+                       vx: (Math.random() - .65) * 6 - 2, vy: Math.random() * 4 + 5, life: 1 });
+        nextMeteor = t + 3500 + Math.random() * 4500;
+      }
+      for (let i = meteors.length - 1; i >= 0; i--) {
+        const m = meteors[i];
+        m.x += m.vx; m.y += m.vy; m.life -= .012;
+        if (m.life <= 0 || m.y > H + 40) { meteors.splice(i, 1); continue; }
+        const g = cx.createLinearGradient(m.x, m.y, m.x - m.vx * 9, m.y - m.vy * 9);
+        g.addColorStop(0, `rgba(220,230,255,${.7 * m.life})`);
+        g.addColorStop(1, 'rgba(220,230,255,0)');
+        cx.strokeStyle = g; cx.lineWidth = 1.4;
+        cx.beginPath(); cx.moveTo(m.x, m.y); cx.lineTo(m.x - m.vx * 9, m.y - m.vy * 9); cx.stroke();
+      }
+    }
+
+    // constellation reveal
+    const active = tourTask || (hover && hover.task) || (selected && selected.task);
+    for (const task of Object.keys(reveal)) {
+      reveal[task] += (task === active ? 1 - reveal[task] : -reveal[task]) * (reduced ? 1 : .08);
+      if (reveal[task] < .01) delete reveal[task];
+    }
+    if (active && !(active in reveal)) reveal[active] = reduced ? 1 : .02;
+    for (const [task, prog] of Object.entries(reveal)) {
+      const g = tasks[task];
+      if (!g || g.length < 2) continue;
+      const col = color[g[0].agent];
+      cx.strokeStyle = col + '59'; cx.lineWidth = 1;
+      cx.beginPath();
+      let started = false, drawn = 0;
+      const total = g.length - 1, upto = prog * total;
+      for (let i = 0; i < g.length && drawn <= upto; i++) {
+        const o = g[i].i * 5;
+        if (out[o + 2] === 0) { started = false; continue; }
+        if (!started) { cx.moveTo(out[o], out[o + 1]); started = true; }
+        else { cx.lineTo(out[o], out[o + 1]); drawn++; }
+      }
+      cx.stroke();
+    }
+
+    // depth sort (painter's: far -> near)
+    const order = DATA.map(d => d.i).sort((a, b) => out[b * 5 + 4] - out[a * 5 + 4]);
+
+    for (const i of order) {
+      const d = DATA[i], o = i * 5;
+      const k = out[o + 2];
+      if (k === 0) continue;
+      const x = out[o], y = out[o + 1], fog = out[o + 3];
+      if (x < -50 || y < -50 || x > W + 50 || y > H + 50) continue;
+      const target = visible(d) ? (d.dim ? .3 : 1) : .06;
+      d.alpha += (target - d.alpha) * (reduced ? 1 : .12);
+      const it = Math.min(1, Math.max(0, (t - t0 - d.delay) / (INTRO || 1)));
+      const twinkle = reduced ? 1 : .86 + .14 * Math.sin(t / 900 + d.phase);
+      const isFocus = hover === d || selected === d;
+      let r = d.r * k * (isFocus ? 1.6 : 1);
+      if (matches(d) && !reduced) r *= 1 + .18 * Math.sin(t / 260 + d.phase);
+      const a = d.alpha * twinkle * fog * it;
+      if (a < .01) continue;
+      const glow = cx.createRadialGradient(x, y, 0, x, y, r * 4);
+      glow.addColorStop(0, color[d.agent] + 'ff');
+      glow.addColorStop(.25, color[d.agent] + '66');
+      glow.addColorStop(1, color[d.agent] + '00');
+      cx.globalAlpha = a;
+      cx.fillStyle = glow;
+      cx.beginPath(); cx.arc(x, y, r * 4, 0, 7); cx.fill();
+      cx.fillStyle = '#fff';
+      cx.beginPath(); cx.arc(x, y, Math.max(1, r * .45), 0, 7); cx.fill();
+      if (selected === d) {
+        cx.strokeStyle = color[d.agent] + 'cc'; cx.lineWidth = 1.2;
+        cx.setLineDash([5, 6]); cx.lineDashOffset = reduced ? 0 : -t / 40;
+        cx.beginPath(); cx.arc(x, y, r * 4 + 6, 0, 7); cx.stroke();
+        cx.setLineDash([]);
+      }
+      cx.globalAlpha = 1;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // --- picking + pointer -------------------------------------------------------------------------
+  function pick(x, y) {
+    const out = core.out();
+    let best = null, bd = 15;
+    for (const d of DATA) {
+      if (!visible(d)) continue;
+      const o = d.i * 5;
+      if (out[o + 2] === 0) continue;
+      const dist = Math.hypot(out[o] - x, out[o + 1] - y);
+      if (dist < bd + d.r * out[o + 2]) { bd = dist; best = d; }
+    }
+    return best;
+  }
+  const tip = document.getElementById('tip');
+  let dragging = false, moved = false, lx = 0, ly = 0, panning = false;
+  let vpx = 0, vpy = 0, lastMoveT = 0; // smoothed drag velocity (px/frame) for release flick
+  cv.addEventListener('pointerdown', e => {
+    stopTour(); lastInput = performance.now();
+    dragging = true; moved = false; panning = e.shiftKey || e.button === 2;
+    lx = e.clientX; ly = e.clientY; vpx = vpy = 0;
+    cv.classList.add('dragging'); cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+  cv.addEventListener('pointerup', e => {
+    dragging = false; cv.classList.remove('dragging');
+    if (!moved) {
+      const d = pick(e.clientX, e.clientY);
+      if (d) { selected = d; openDrawer(d); core.flyTo(d.x, d.y, d.z, 1.5); }
+      else { selected = null; closeDrawer(); }
+    } else if (!panning && !reduced && performance.now() - lastMoveT < 90) {
+      core.flick(vpx, vpy); // recent motion at release => throw
+    }
+  });
+  cv.addEventListener('pointermove', e => {
+    if (dragging) {
+      lastInput = performance.now();
+      const dx = e.clientX - lx, dy = e.clientY - ly;
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      if (panning) core.pan(dx, dy);
+      else {
+        core.orbit(dx, dy); camYawProxy += dx * .0024;
+        const now = performance.now(), dtf = Math.max(1, now - lastMoveT) / 16.7;
+        vpx = vpx * .7 + (dx / dtf) * .3; // EMA over recent events
+        vpy = vpy * .7 + (dy / dtf) * .3;
+        lastMoveT = now;
+      }
+      lx = e.clientX; ly = e.clientY;
+      tip.style.display = 'none'; hover = null;
+      return;
+    }
+    hover = pick(e.clientX, e.clientY);
+    if (hover) {
+      tip.innerHTML = `<div class="k">${esc(hover.key)}</div>` +
+        `<div class="m">${esc(hover.agent)} · ${esc(hover.team)}/${esc(hover.task)} · ${esc(hover.type)} · v${hover.version}${hover.dim ? ' · ' + esc(hover.status) : ''}</div>` +
+        `<div class="t">${esc(hover.text)}${hover.text.length >= 280 ? '…' : ''}</div>`;
+      tip.style.display = 'block';
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      tip.style.left = Math.min(e.clientX + 16, W - tw - 10) + 'px';
+      tip.style.top = Math.min(e.clientY + 16, H - th - 10) + 'px';
+      cv.style.cursor = 'pointer';
+    } else { tip.style.display = 'none'; cv.style.cursor = 'grab'; }
+  });
+  cv.addEventListener('wheel', e => {
+    e.preventDefault(); stopTour(); lastInput = performance.now();
+    core.dolly(Math.exp(e.deltaY * 0.0011));
+  }, { passive: false });
+  cv.addEventListener('dblclick', () => { selected = null; closeDrawer(); core.reset(); });
+
+  // --- tour ------------------------------------------------------------------------------------------
+  const tourBtn = document.getElementById('tour');
+  const caption = document.getElementById('caption');
+  let tourTimer = null, tourIdx = -1, tourTask = null;
+  function tourStep() {
+    tourIdx = (tourIdx + 1) % clusters.length;
+    const c = clusters[tourIdx];
+    tourTask = c.task;
+    core.flyTo(c.cx, c.cy, c.cz, Math.max(1.1, c.spread * 3.4));
+    caption.innerHTML = `constellation <span class="task">${esc(c.task)}</span> · ${c.g.length} memories · ${esc(c.g[0].agent)}`;
+    caption.classList.add('show');
+  }
+  function startTour() {
+    if (!clusters.length) return;
+    tourBtn.classList.add('on'); tourBtn.setAttribute('aria-pressed', 'true');
+    closeDrawer(); selected = null;
+    tourStep();
+    tourTimer = setInterval(tourStep, 4600);
+  }
+  function stopTour() {
+    if (!tourTimer) return;
+    clearInterval(tourTimer); tourTimer = null; tourTask = null;
+    tourBtn.classList.remove('on'); tourBtn.setAttribute('aria-pressed', 'false');
+    caption.classList.remove('show');
+  }
+  tourBtn.onclick = () => tourTimer ? stopTour() : startTour();
+
+  // --- drawer + search ---------------------------------------------------------------------------------
+  const drawer = document.getElementById('drawer');
+  function openDrawer(d) {
+    drawer.querySelector('.key').textContent = d.key;
+    const when = d.created ? new Date(d.created * 1000).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : '—';
+    drawer.querySelector('dl').innerHTML =
+      row('agent', d.agent) + row('team', d.team) + row('task', d.task) +
+      row('type', d.type) + row('status', d.status) + row('version', 'v' + d.version) + row('created', when);
+    drawer.querySelector('.body').textContent = d.full || d.text; // full memory, not the preview
+    drawer.classList.add('open');
+  }
+  const row = (k, v) => `<dt>${k}</dt><dd>${esc(String(v))}</dd>`;
+  const closeDrawer = () => drawer.classList.remove('open');
+  drawer.querySelector('.close').onclick = () => { selected = null; closeDrawer(); };
+  document.getElementById('search').addEventListener('input', e => {
+    query = e.target.value.trim().toLowerCase();
+  });
+
+  function esc(s) { return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  addEventListener('resize', resize);
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>

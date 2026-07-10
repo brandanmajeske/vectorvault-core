@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""vv-galaxy — generate the VectorVault Memory Galaxy from the live vault.
+
+Pulls every vector in ``shared-team-memory`` (embedding + metadata) under the
+read-only **auditor** role, projects the 1024-dim Titan embeddings to 2D/3D with
+pure-Python PCA (Gram-matrix power iteration — no numpy), injects the points into
+the committed HTML templates, and writes self-contained pages you can open, host,
+or share. The 3D page embeds the prebuilt Rust/WASM camera core
+(``viz/galaxy3d/galaxy3d.wasm.b64``) with an identical-math JS fallback.
+
+Keyless like everything else here: AWS credentials only.
+
+    AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv_galaxy.py            # 3D, opens browser
+    ... vv_galaxy.py --mode both --out ./galaxy-out --no-open        # 2D + 3D, just write
+    ... vv_galaxy.py --role none                                     # ambient creds (no role assume)
+    ... vv_galaxy.py --rebuild-wasm                                  # re-run cargo first (needs Rust)
+
+See docs/memory-galaxy.md.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import random
+import subprocess
+import sys
+import webbrowser
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+CRATE = REPO / "viz" / "galaxy3d"
+TEMPLATES = REPO / "viz" / "templates"
+
+# --- PCA (pure Python; N is small so the N x N Gram matrix is cheap) ---------------
+
+
+def gram_pca(rows: list[list[float]], components: int, seed: int = 42) -> list[list[float]]:
+    """Top-``components`` principal scores of ``rows`` via Gram-matrix power iteration.
+
+    Works in sample space (N x N) instead of feature space (1024 x 1024), so a
+    vault of a few hundred memories projects in well under a second without numpy.
+    Returns ``components`` lists of N values, each normalized to [-1, 1].
+    """
+    n = len(rows)
+    if n == 0:
+        return [[] for _ in range(components)]
+    d = len(rows[0])
+    mean = [sum(col) / n for col in zip(*rows, strict=True)]
+    c = [[row[j] - mean[j] for j in range(d)] for row in rows]
+    g = [[sum(a * b for a, b in zip(c[i], c[j], strict=True)) for j in range(n)] for i in range(n)]
+
+    def power_iter(m: list[list[float]], iters: int = 300) -> tuple[list[float], float]:
+        rng = random.Random(seed)
+        v = [rng.random() - 0.5 for _ in range(n)]
+        for _ in range(iters):
+            w = [sum(m[i][j] * v[j] for j in range(n)) for i in range(n)]
+            nrm = math.sqrt(sum(x * x for x in w)) or 1.0
+            v = [x / nrm for x in w]
+        lam = sum(v[i] * sum(m[i][j] * v[j] for j in range(n)) for i in range(n))
+        return v, lam
+
+    out: list[list[float]] = []
+    for _ in range(components):
+        u, lam = power_iter(g)
+        out.append([u[i] * math.sqrt(abs(lam)) for i in range(n)])
+        g = [[g[i][j] - lam * u[i] * u[j] for j in range(n)] for i in range(n)]  # deflate
+    return [normalize(vals) for vals in out]
+
+
+def normalize(vals: list[float]) -> list[float]:
+    lo, hi = min(vals), max(vals)
+    span = (hi - lo) or 1.0
+    return [(v - lo) / span * 2 - 1 for v in vals]
+
+
+# --- data pull ----------------------------------------------------------------------
+
+
+def fetch_vectors(region: str, role: str) -> list[dict]:
+    """All vectors (data + metadata) from the shared index, optionally under a role."""
+    import boto3
+
+    from vectorvault import Config
+
+    ssm = boto3.client("ssm", region_name=region)
+    config = Config.from_ssm(ssm)
+    if role != "none":
+        arn = ssm.get_parameter(Name=f"/vectorvault/role/{role}-arn")["Parameter"]["Value"]
+        creds = boto3.client("sts", region_name=region).assume_role(
+            RoleArn=arn, RoleSessionName="vv-galaxy")["Credentials"]
+        s3v = boto3.client(
+            "s3vectors", region_name=region,
+            aws_access_key_id=creds["AccessKeyId"],
+            aws_secret_access_key=creds["SecretAccessKey"],
+            aws_session_token=creds["SessionToken"])
+    else:
+        s3v = boto3.client("s3vectors", region_name=region)
+
+    vectors, token = [], None
+    while True:
+        kw = dict(vectorBucketName=config.vector_bucket, indexName=config.shared_index,
+                  returnData=True, returnMetadata=True, maxResults=500)
+        if token:
+            kw["nextToken"] = token
+        resp = s3v.list_vectors(**kw)
+        vectors.extend(resp.get("vectors", []))
+        token = resp.get("nextToken")
+        if not token:
+            break
+    return vectors
+
+
+def active_only(vectors: list[dict]) -> list[dict]:
+    """Only live memories: status == 'active' (drops superseded version history and
+    archived records in their 30-day grace window)."""
+    return [v for v in vectors if (v.get("metadata") or {}).get("status") == "active"]
+
+
+def to_points(vectors: list[dict], dims: int) -> list[dict]:
+    coords = gram_pca([v["data"]["float32"] for v in vectors], dims)
+    points = []
+    for i, v in enumerate(vectors):
+        m = v.get("metadata") or {}
+        content = m.get("content") or m.get("content_summary") or ""
+        p = {
+            "key": v["key"],
+            "x": round(coords[0][i], 4), "y": round(coords[1][i], 4),
+            "agent": m.get("agent_id", "?"), "team": m.get("team_id", "?"),
+            "task": m.get("task_id", "?"), "type": m.get("memory_type", "?"),
+            "status": m.get("status", "?"), "version": int(m.get("version", 1) or 1),
+            "created": int(m.get("created_at", 0) or 0),
+            "text": content[:280],  # tooltip preview + star sizing
+        }
+        if len(content) > 280:
+            p["full"] = content  # detail drawer shows the whole memory
+        if dims == 3:
+            p["z"] = round(coords[2][i], 4)
+        points.append(p)
+    return points
+
+
+# --- build --------------------------------------------------------------------------
+
+
+def build_html(template: Path, points: list[dict], wasm_b64: str | None) -> str:
+    data = json.dumps(points).replace("</", "<\\/")  # guard </script> in content
+    html = template.read_text().replace("__DATA__", data)
+    if "__WASM__" in html:
+        if not wasm_b64:
+            raise SystemExit(f"{template.name} needs the wasm core; missing {CRATE}/galaxy3d.wasm.b64")
+        html = html.replace("__WASM__", wasm_b64)
+    return html
+
+
+def rebuild_wasm() -> None:
+    """Re-run cargo (wasm32-unknown-unknown) and refresh the committed base64."""
+    subprocess.run(
+        ["cargo", "build", "--release", "--target", "wasm32-unknown-unknown"],
+        cwd=CRATE, check=True)
+    wasm = CRATE / "target/wasm32-unknown-unknown/release/galaxy3d.wasm"
+    import base64
+
+    (CRATE / "galaxy3d.wasm.b64").write_text(base64.b64encode(wasm.read_bytes()).decode())
+    print(f"rebuilt wasm ({wasm.stat().st_size} bytes) -> galaxy3d.wasm.b64")
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="vv-galaxy", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--mode", default="3d", choices=["2d", "3d", "both"])
+    p.add_argument("--out", default=str(REPO / "galaxy-out"), help="Output directory (default ./galaxy-out).")
+    p.add_argument("--region", default="us-west-2")
+    p.add_argument("--role", default="auditor", choices=["auditor", "planner", "researcher", "none"],
+                   help="IAM role to read under (default: auditor, the read-only role).")
+    p.add_argument("--active", action="store_true",
+                   help="Only live memories (status == 'active'): hide superseded version "
+                        "history and archived records from the counts and the rendered galaxy.")
+    p.add_argument("--no-open", action="store_true", help="Write files without opening a browser.")
+    p.add_argument("--rebuild-wasm", action="store_true",
+                   help="Re-run cargo for the 3D core first (needs the Rust wasm32 target).")
+    args = p.parse_args(argv)
+
+    if args.rebuild_wasm:
+        rebuild_wasm()
+
+    vectors = fetch_vectors(args.region, args.role)
+    if args.active:
+        vectors = active_only(vectors)
+    if not vectors:
+        print("the shared index is empty — nothing to plot", file=sys.stderr)
+        return 1
+    teams: dict[str, int] = {}
+    for v in vectors:
+        t = (v.get("metadata") or {}).get("team_id", "?")
+        teams[t] = teams.get(t, 0) + 1
+    print(f"{len(vectors)} memories · teams: {teams}")
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    wasm_b64 = (CRATE / "galaxy3d.wasm.b64").read_text().strip() if (CRATE / "galaxy3d.wasm.b64").exists() else None
+
+    written: list[Path] = []
+    if args.mode in ("2d", "both"):
+        points = to_points(vectors, 2)
+        f = out_dir / "vectorvault-memory-galaxy-2d.html"
+        f.write_text(build_html(TEMPLATES / "galaxy-2d.html", points, None))
+        written.append(f)
+    if args.mode in ("3d", "both"):
+        points = to_points(vectors, 3)
+        f = out_dir / "vectorvault-memory-galaxy-3d.html"
+        f.write_text(build_html(TEMPLATES / "galaxy-3d.html", points, wasm_b64))
+        written.append(f)
+
+    for f in written:
+        print(f"wrote {f} ({f.stat().st_size:,} bytes)")
+    if not args.no_open and written:
+        webbrowser.open(written[-1].as_uri())
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
