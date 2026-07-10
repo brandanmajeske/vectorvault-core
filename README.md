@@ -351,13 +351,27 @@ wrote — delete by hand to clean the machine too.
 Point your AWS profile at the target account (Region `us-west-2` by default — see the
 one-way-door checklist first), then:
 
+Deploy the two stacks **in order** — `VectorVaultMemoryStack` first, then
+`VectorVaultMonitoringStack`. Monitoring reads the alerts-topic ARN from the
+`/vectorvault/*` SSM contract that MemoryStack publishes, so on a first (from-scratch)
+deploy that parameter must exist before Monitoring synthesizes. The stacks are
+deliberately decoupled (no CDK cross-stack dependency), so `cdk deploy --all` does **not**
+guarantee this order and will fail the first time with
+`Unable to fetch parameters [/vectorvault/alerts-topic-arn]`. Deploy them explicitly:
+
 ```bash
 cd infra && npm ci
 npx cdk bootstrap                                   # once per account/region
-npx cdk deploy --all \
+
+# 1. Core stack — creates the vector bucket, roles, and the SSM contract.
+npx cdk deploy VectorVaultMemoryStack \
   -c alertEmail=you@company.com \
   -c budgetUsd=20 \
   -c ttlDryRun=true                                 # keep dry-run ON until validated
+
+# 2. Monitoring — resolves the alerts topic from SSM (now that it exists).
+npx cdk deploy VectorVaultMonitoringStack \
+  -c alertEmail=you@company.com
 ```
 
 Then run the post-deploy verification above. Recommended hardening once validated:
