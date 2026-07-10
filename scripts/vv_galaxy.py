@@ -21,6 +21,7 @@ See docs/memory-galaxy.md.
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import math
 import random
@@ -186,8 +187,15 @@ def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser
     try:
         httpd = http.server.ThreadingHTTPServer((bind, port), Handler)
     except OSError as exc:
-        print(f"cannot bind {bind}:{port} ({exc.strerror}); try --port <other>", file=sys.stderr)
-        return 1
+        # Busy port (e.g. a prior galaxy server still running): fall back to a free one
+        # rather than crashing. Skip the fallback only when port == 0 (already asking
+        # for a free port) or the failure isn't EADDRINUSE.
+        if exc.errno != errno.EADDRINUSE or port == 0:
+            print(f"cannot bind {bind}:{port} ({exc.strerror}); try --port <other>", file=sys.stderr)
+            return 1
+        print(f"port {port} is in use; picking a free port instead (--port to choose)", file=sys.stderr)
+        httpd = http.server.ThreadingHTTPServer((bind, 0), Handler)
+    port = httpd.server_address[1]  # resolve the actual port (matters after a free-port fallback)
     if bind not in ("127.0.0.1", "localhost", "::1"):
         print(f"WARNING: binding {bind} exposes your memories beyond this machine", file=sys.stderr)
     url = f"http://{'127.0.0.1' if bind == '0.0.0.0' else bind}:{port}/"
