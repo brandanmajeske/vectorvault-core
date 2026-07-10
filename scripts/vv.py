@@ -129,21 +129,46 @@ def _run_galaxy(rest: list[str]) -> int:
     return mod.main(rest)
 
 
+def _extract_profile(argv: list[str]) -> str | None:
+    """Pull `--profile X` / `--profile=X` out of argv, in place, from any position.
+
+    --profile is a global that applies regardless of where it sits, but the `galaxy`
+    subcommand forwards everything after it verbatim to vv_galaxy.py (which has no
+    --profile). Consuming it here first makes `vv --galaxy --profile X` and
+    `vv --profile X galaxy` both work, and keeps it out of the galaxy passthrough.
+    """
+    profile = None
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok == "--profile":
+            profile = argv[i + 1] if i + 1 < len(argv) else None
+            del argv[i : i + 2]
+            continue
+        if tok.startswith("--profile="):
+            profile = tok.split("=", 1)[1]
+            del argv[i]
+            continue
+        i += 1
+    return profile
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    # Ergonomic alias: `--galaxy` anywhere == the `galaxy` subcommand, so both
-    # `vv --galaxy …` and `vv --profile X --galaxy …` work (global opts may precede it).
+    # --profile wins over the ambient AWS_PROFILE / .vvrc default. Consume it before
+    # argparse (from any position) and set it in the env so it reaches every AWS call
+    # uniformly — the SSM/STS clients, the assumed-role session, and from_config's
+    # internal boto3 Session (design-doc §5) — including the galaxy hand-off.
+    profile = _extract_profile(argv)
+    if profile:
+        os.environ["AWS_PROFILE"] = profile
+    # Ergonomic alias: `--galaxy` anywhere == the `galaxy` subcommand.
     if "--galaxy" in argv:
         argv[argv.index("--galaxy")] = "galaxy"
     parser = build_parser()
     # parse_known_args so galaxy's flags pass through untouched (argparse REMAINDER
     # in a subparser refuses tokens that start with '-'); other verbs stay strict.
     args, extra = parser.parse_known_args(argv)
-    # --profile wins over the ambient AWS_PROFILE / .vvrc default. Set it in the env so
-    # it reaches every AWS call uniformly — the SSM/STS clients here, the assumed-role
-    # session, and MemoryClient.from_config's internal boto3 Session (design-doc §5).
-    if args.profile:
-        os.environ["AWS_PROFILE"] = args.profile
     if args.cmd == "galaxy":  # no memory client needed — hand off before AWS setup
         return _run_galaxy([*extra, *args.rest])
     if extra:
