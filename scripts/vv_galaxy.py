@@ -229,7 +229,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-open", action="store_true", help="Don't launch a browser.")
     p.add_argument("--no-serve", action="store_true",
                    help="Just write the files; don't start the web server (CI/scripts).")
-    p.add_argument("--port", type=int, default=8777, help="Web server port (default 8777).")
+    p.add_argument("--port", type=int, default=8777,
+                   help="Web server port (default 8777; 0 picks a free port).")
     p.add_argument("--bind", default="127.0.0.1",
                    help="Bind address (default 127.0.0.1 — the pages contain real memories; "
                         "0.0.0.0 exposes them on your network).")
