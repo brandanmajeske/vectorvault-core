@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any
 
@@ -66,6 +67,9 @@ def emit(obj: Any) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="vv", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--profile", default=None,
+                   help="AWS profile to use (overrides the AWS_PROFILE env / .vvrc default). "
+                        "Applied to every AWS call, including the assumed-role session.")
     p.add_argument("--region", default="us-west-2", help="AWS region (default us-west-2).")
     p.add_argument("--role", default="none", choices=["none", "planner", "researcher", "auditor", "admin"],
                    help="Assume this scoped IAM role; default uses ambient credentials. "
@@ -127,12 +131,19 @@ def _run_galaxy(rest: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv[:1] == ["--galaxy"]:  # ergonomic alias: `vv --galaxy ...` == `vv galaxy ...`
-        argv[0] = "galaxy"
+    # Ergonomic alias: `--galaxy` anywhere == the `galaxy` subcommand, so both
+    # `vv --galaxy …` and `vv --profile X --galaxy …` work (global opts may precede it).
+    if "--galaxy" in argv:
+        argv[argv.index("--galaxy")] = "galaxy"
     parser = build_parser()
     # parse_known_args so galaxy's flags pass through untouched (argparse REMAINDER
     # in a subparser refuses tokens that start with '-'); other verbs stay strict.
     args, extra = parser.parse_known_args(argv)
+    # --profile wins over the ambient AWS_PROFILE / .vvrc default. Set it in the env so
+    # it reaches every AWS call uniformly — the SSM/STS clients here, the assumed-role
+    # session, and MemoryClient.from_config's internal boto3 Session (design-doc §5).
+    if args.profile:
+        os.environ["AWS_PROFILE"] = args.profile
     if args.cmd == "galaxy":  # no memory client needed — hand off before AWS setup
         return _run_galaxy([*extra, *args.rest])
     if extra:
