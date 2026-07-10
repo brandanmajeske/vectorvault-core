@@ -25,19 +25,26 @@ This guide walks through calling up info from the vault first-hand, using the in
 
 ## Step 0 — Prerequisites
 
-Run everything from the **repo root**, with the project virtualenv.
+Install the server **globally** into its own venv — one stable path every project's MCP
+config points at, decoupled from any checkout's `.venv`. Install it **editable** (`-e`)
+so upgrading is just `git pull` in the repo; a non-editable install snapshots the code
+and silently goes stale as the repo moves.
 
 ```bash
-pip install -e ".[mcp]"                       # adds the vectorvault-mcp console script
+python -m venv ~/.venvs/vectorvault
+~/.venvs/vectorvault/bin/pip install -e "<repo>[mcp]"     # editable: tracks the checkout
 aws sso login --profile <your-profile>                  # AWS creds (swap in your own profile)
 aws sts get-caller-identity --profile <your-profile>    # confirm the token is live
 ```
 
-Grab the **absolute** path to the server — MCP configs require it:
+The canonical server command used throughout this guide:
 
 ```bash
-MCP_BIN="$(pwd)/.venv/bin/vectorvault-mcp"; echo "$MCP_BIN"
+MCP_BIN=~/.venvs/vectorvault/bin/vectorvault-mcp
 ```
+
+(Working from a repo checkout without the global install? `"$(pwd)/.venv/bin/vectorvault-mcp"`
+works too — same server, checkout-tied path.)
 
 The server reads its behavior from environment variables:
 
@@ -61,7 +68,7 @@ claude mcp add vectorvault \
   -e AWS_PROFILE=<your-profile> \
   -e VECTORVAULT_ROLE=planner \
   -e VECTORVAULT_AGENT_ID=claude-vv \
-  -- "$(pwd)/.venv/bin/vectorvault-mcp"
+  -- ~/.venvs/vectorvault/bin/vectorvault-mcp
 ```
 
 **2. Confirm it connected:**
@@ -107,7 +114,7 @@ import asyncio, json, os
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-SERVER = os.path.abspath(".venv/bin/vectorvault-mcp")
+SERVER = os.path.expanduser("~/.venvs/vectorvault/bin/vectorvault-mcp")
 
 async def main():
     params = StdioServerParameters(
@@ -146,7 +153,7 @@ memories — the same thing Claude does in Path A, just visible on the wire.
 ```bash
 grok mcp add --scope project \
   -e AWS_PROFILE=<your-profile> -e VECTORVAULT_ROLE=planner -e VECTORVAULT_AGENT_ID=grok-vv \
-  vectorvault -- "$(pwd)/.venv/bin/vectorvault-mcp"
+  vectorvault -- ~/.venvs/vectorvault/bin/vectorvault-mcp
 
 grok                            # then ask the same Acme questions
 grok mcp remove vectorvault     # when done
@@ -185,7 +192,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from openai import OpenAI
 
-SERVER = os.path.abspath(".venv/bin/vectorvault-mcp")
+SERVER = os.path.expanduser("~/.venvs/vectorvault/bin/vectorvault-mcp")
 OLLAMA = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/") + "/v1"
 MODEL = os.environ.get("GEMMA_MODEL", "gemma4:12b")
 
@@ -260,50 +267,36 @@ authenticates to AWS. So an external project needs only two things: **a way to l
 in your project. (The `tests/e2e` suite and the check above both launch the server from an
 empty temp dir — cwd genuinely doesn't matter.)
 
-### Option 1 — Point at this checkout's server (quickest, same machine)
+### Same machine — you already have it
 
-The console script already exists in this repo's venv. From your other project, register
-it by **absolute path**:
+The global install from Step 0 is the whole answer: same command, different env per
+project. From any directory:
 
 ```bash
 cd ~/Projects/my-new-thing          # empty project, unrelated to VectorVault
 claude mcp add vectorvault \
   -e AWS_PROFILE=<your-profile> -e AWS_REGION=us-west-2 \
   -e VECTORVAULT_ROLE=researcher -e VECTORVAULT_AGENT_ID=claude-mynewthing \
-  -- <repo>/.venv/bin/vectorvault-mcp
+  -- ~/.venvs/vectorvault/bin/vectorvault-mcp
 claude mcp list                     # vectorvault - ✓ Connected
 ```
 
-Works as long as this repo's `.venv` stays put; the agent's cwd is irrelevant because the
-server runs as its own subprocess.
+The agent's cwd is irrelevant — the server runs as its own subprocess and discovers the
+stack from SSM. Because the global install is **editable**, a `git pull` in the repo
+upgrades every project's server at once (sessions pick it up on their next MCP restart).
 
-### Option 2 — Install the server standalone (decoupled / other machines)
+### Alternatives (checkout-tied or PATH-wide)
 
-To stop depending on this checkout (or set it up on a different machine), install the
-package into its own environment. It's not on PyPI, so install from the repo path or the
-git URL, **with the `[mcp]` extra**:
+- **A checkout's venv directly** — `/path/to/repo/.venv/bin/vectorvault-mcp`. Dev-loop
+  convenience; breaks if the checkout moves.
+- **pipx**, to put `vectorvault-mcp` on your PATH globally (non-editable — reinstall to
+  upgrade): `pipx install "git+ssh://git@github.com/<your-org>/vectorvault-core#egg=vectorvault[mcp]"`
 
-```bash
-# Dedicated venv (bulletproof):
-python -m venv ~/.venvs/vectorvault
-~/.venvs/vectorvault/bin/pip install "<repo>[mcp]"
-#   -> server command is ~/.venvs/vectorvault/bin/vectorvault-mcp
+### Another machine
 
-# …or pipx, to put `vectorvault-mcp` on your PATH globally:
-pipx install "<repo>[mcp]"
-pipx install "git+ssh://git@github.com/<your-org>/vectorvault-core#egg=vectorvault[mcp]"   # from git
-```
-
-Then register with that command instead of the repo path:
-
-```bash
-claude mcp add vectorvault \
-  -e AWS_PROFILE=<your-profile> -e VECTORVAULT_ROLE=researcher -e VECTORVAULT_AGENT_ID=claude-mynewthing \
-  -- ~/.venvs/vectorvault/bin/vectorvault-mcp      # or just `vectorvault-mcp` if on PATH
-```
-
-On another machine you also need the repo (or git access) to install from, plus
-`aws sso login --profile <your-profile>` so its credentials point at the same account.
+Clone the repo (or install from the git URL), create the same `~/.venvs/vectorvault`
+editable install from Step 0, and `aws sso login --profile <your-profile>` so credentials point at
+the same account.
 
 ### Make it project-scoped (optional)
 
@@ -314,7 +307,7 @@ instead of registering globally — Claude Code auto-loads it:
 {
   "mcpServers": {
     "vectorvault": {
-      "command": "<repo>/.venv/bin/vectorvault-mcp",
+      "command": "/home/<you>/.venvs/vectorvault/bin/vectorvault-mcp",
       "env": {
         "AWS_PROFILE": "<your-profile>",
         "AWS_REGION": "us-west-2",
@@ -384,7 +377,8 @@ memory; scope it and you stay within one tenant's corpus.
 
 | Symptom | Fix |
 |---|---|
-| `claude mcp list` shows ✗ / failed to connect | Path to `vectorvault-mcp` must be **absolute**; confirm `pip install -e ".[mcp]"` and that `AWS_PROFILE` is set in the server `env`. |
+| `claude mcp list` shows ✗ / failed to connect | Path to `vectorvault-mcp` must be **absolute** (canonical: `~/.venvs/vectorvault/bin/vectorvault-mcp`); confirm the Step 0 install and that `AWS_PROFILE` is set in the server `env`. |
+| Server rejects a role/feature that's in the docs (e.g. `auditor`) | The global venv was installed **non-editable** and snapshots old code. Reinstall editable: `~/.venvs/vectorvault/bin/pip install -e "<repo>[mcp]"` — then upgrades are just `git pull`. |
 | `Token has expired` / `sso` errors in tool results | `aws sso login --profile <your-profile>` |
 | `retrieve_memory` returns nothing | Check the `filters` (`team_id`/`task_id`) match what was stored; try without filters; expired/superseded/archived memories don't surface. |
 | Tool call denied on a private index | A role reaches only `shared-team-memory` + its own private index — index isolation working as intended. |
