@@ -1,0 +1,40 @@
+# CI for VectorVault — GitLab CI equivalent of .github/workflows/ci.yml.
+# Both files coexist: GitHub runs the Actions workflow, GitLab runs this one,
+# each ignores the other. Neither pipeline needs AWS credentials — unit tests
+# mock boto3 and the CDK job only synthesizes + asserts on the template.
+
+stages:
+  - test
+
+python:
+  stage: test
+  image: python:3.12-slim
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  cache:
+    key: pip-$CI_COMMIT_REF_SLUG
+    paths:
+      - .cache/pip
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  script:
+    - pip install -e ".[dev]"
+    - ruff check src tests
+    - pytest tests/unit -q
+
+infra:
+  stage: test
+  image: node:20
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  cache:
+    key: npm-$CI_COMMIT_REF_SLUG
+    paths:
+      - infra/node_modules/
+  script:
+    - cd infra
+    - npm ci
+    - npx cdk synth --quiet   # no deploy, no AWS credentials
+    - npm test                # one-way-door + least-privilege template assertions
