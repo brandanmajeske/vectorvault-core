@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from conftest import FIXED_NOW
 
-from vectorvault.memory_client import NO_EXPIRY
+from vectorvault.memory_client import NO_EXPIRY, MemoryClient
 from vectorvault.models import StoreAction, build_vector_key, content_digest, content_hash_str
 
 BASE = {"team_id": "research-alpha", "task_id": "q2", "memory_type": "semantic"}
@@ -45,6 +45,32 @@ def test_store_create_writes_vector_and_upserts_index(client, fakes):
     assert stored["status"] == "active"
     # best-effort canonical index row written
     assert res.canonical_id in fakes["canon_table"].items
+
+
+def test_store_stamps_stored_by_when_set(config, fakes):
+    from vectorvault.canonical_index import CanonicalIndex
+    from vectorvault.embedding_cache import EmbeddingCache
+
+    cache = EmbeddingCache(fakes["bedrock"], fakes["embed_table"], config.embed_model_id)
+    canonical = CanonicalIndex(fakes["canon_table"], config.memory_index_task_gsi)
+    c = MemoryClient(
+        config=config, agent_id="planner", stored_by="jane.doe@corp.com",
+        s3vectors=fakes["s3v"], s3=fakes["s3"], embedding_cache=cache,
+        canonical_index=canonical, ttl_index_table=fakes["ttl_table"], clock=lambda: FIXED_NOW,
+    )
+    fakes["s3v"].query_hits = []
+    res = c.store_memory("Q2 revenue grew 12% YoY", dict(BASE))
+    stored = fakes["s3v"].vectors[(SHARED, res.key)]["metadata"]
+    assert stored["stored_by"] == "jane.doe@corp.com"
+    assert stored["agent_id"] == "planner"  # logical agent stays separate from the AWS principal
+
+
+def test_store_omits_stored_by_when_ambient(client, fakes):
+    # The default client fixture has no stored_by (ambient creds) -> field is dropped.
+    fakes["s3v"].query_hits = []
+    res = client.store_memory("Q2 revenue grew 12% YoY", dict(BASE))
+    stored = fakes["s3v"].vectors[(SHARED, res.key)]["metadata"]
+    assert "stored_by" not in stored
 
 
 def test_store_exact_hash_is_unchanged_noop(client, fakes):

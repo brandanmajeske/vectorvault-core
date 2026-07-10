@@ -56,6 +56,29 @@ def test_to_vectors_metadata_drops_none_and_unwraps_enums():
     assert out["origin"] == "agent"
     assert "content_ref" not in out  # None dropped
     assert "archived_at" not in out
+    assert "stored_by" not in out  # None dropped (ambient-cred write)
+
+
+def test_stored_by_roundtrips_and_is_filterable():
+    from vectorvault.models import FILTERABLE_KEYS, MemoryRecord
+
+    assert "stored_by" in FILTERABLE_KEYS  # queryable, not in the frozen non-filterable list
+    md = MemoryMetadata(
+        agent_id="planner",
+        stored_by="jane.doe@corp.com",
+        team_id="t",
+        task_id="q2",
+        memory_type="semantic",
+        created_at=1,
+        canonical_id="c",
+        content_hash="sha256:x",
+    )
+    out = md.to_vectors_metadata()
+    assert out["stored_by"] == "jane.doe@corp.com"
+    # Surfaced on the record agents/CLI see.
+    rec = MemoryRecord.from_vector("mem_k", out)
+    assert rec.stored_by == "jane.doe@corp.com"
+    assert rec.agent_id == "planner"  # logical agent stays distinct from the AWS principal
 
 
 def test_canonical_id_length_is_capped():

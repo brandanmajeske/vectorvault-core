@@ -27,6 +27,7 @@ enum below only advertises the indexes a role may touch; IAM is the real gate.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -35,6 +36,29 @@ from vectorvault.config import Config
 from vectorvault.memory_client import MemoryClient
 
 Role = Literal["planner", "researcher", "auditor"]
+
+# STS SourceIdentity charset is [\w+=,.@-]{2,64} and must not start with "aws:".
+_SOURCE_ID_BAD = re.compile(r"[^\w+=,.@-]")
+
+
+def _source_identity(caller: dict[str, Any]) -> str:
+    """Short, STS-valid principal id derived from ``GetCallerIdentity``.
+
+    Prefers the trailing session name of an assumed-role ARN (an SSO login ends in
+    ``.../<email>``), falling back to ``UserId``. Sanitized to the SourceIdentity
+    charset and 64-char cap, and stripped of the reserved ``aws:`` prefix.
+
+    This is derived server-side from the caller's *base* credentials — the caller
+    cannot forge ``GetCallerIdentity`` — so unlike ``agent_id`` it is trustworthy
+    (design-doc §5). Passed as ``SourceIdentity`` to ``assume_role`` (sticky,
+    IAM-enforced) and stamped on the record as ``stored_by``.
+    """
+    arn = caller.get("Arn", "")
+    raw = arn.rsplit("/", 1)[-1] if "/" in arn else (caller.get("UserId") or "unknown")
+    cleaned = _SOURCE_ID_BAD.sub("-", raw)[:64]
+    while cleaned.startswith("aws:"):
+        cleaned = cleaned[4:]
+    return cleaned or "unknown"
 
 # Verbs the read-only auditor role gets. Everything else (store/archive/restore)
 # mutates and is stripped — matching its IAM grant (Query/Get/List, no PutVectors).
@@ -458,22 +482,41 @@ def memory_client_for_agent(
     """
     import boto3
 
+    sts = sts_client or boto3.client("sts", region_name=config.region)
+    # Derive the real principal from the BASE session (before assume) — trustworthy,
+    # unlike the caller-chosen agent_id. Set it as SourceIdentity (required by the
+    # role trust policy in ENFORCE mode; sticky + on every CloudTrail event) and stamp
+    # it on the record as stored_by (design-doc §5).
+    stored_by = _source_identity(sts.get_caller_identity())
+
     if session is not None:  # test/DI path: one-shot assume, caller owns the session
-        sts = sts_client or boto3.client("sts", region_name=config.region)
-        sts.assume_role(RoleArn=role_arn, RoleSessionName=agent_id)
-        return MemoryClient.from_config(config, agent_id, session=session, **client_kwargs)
+        sts.assume_role(RoleArn=role_arn, RoleSessionName=agent_id, SourceIdentity=stored_by)
+        return MemoryClient.from_config(
+            config, agent_id, session=session, stored_by=stored_by, **client_kwargs
+        )
 
-    assumed = refreshable_assumed_session(role_arn, agent_id, config.region, sts_client=sts_client)
-    return MemoryClient.from_config(config, agent_id, session=assumed, **client_kwargs)
+    # Production: auto-refreshing credentials for long-lived processes, carrying the
+    # SourceIdentity onto every re-assume so attribution survives credential refresh.
+    assumed = refreshable_assumed_session(
+        role_arn, agent_id, config.region, source_identity=stored_by, sts_client=sts_client
+    )
+    return MemoryClient.from_config(
+        config, agent_id, session=assumed, stored_by=stored_by, **client_kwargs
+    )
 
 
-def refreshable_assumed_session(role_arn: str, agent_id: str, region: str, *, sts_client: Any = None) -> Any:
+def refreshable_assumed_session(
+    role_arn: str, agent_id: str, region: str, *, source_identity: str | None = None, sts_client: Any = None
+) -> Any:
     """A ``boto3.Session`` whose assumed-role credentials auto-refresh before expiry.
 
     Each refresh constructs a *fresh* STS client from the default credential chain
     (unless ``sts_client`` is injected for tests), so it re-reads the SSO token
     cache — after the base SSO session expires, a plain ``aws sso login`` heals a
     still-running process on its next AWS call. No restart needed.
+
+    ``source_identity``, when set, is passed on every (re-)assume so CloudTrail
+    attribution (design-doc §5) survives credential refresh, not just the first assume.
     """
     import boto3
     from botocore.credentials import RefreshableCredentials
@@ -481,7 +524,10 @@ def refreshable_assumed_session(role_arn: str, agent_id: str, region: str, *, st
 
     def _refresh() -> dict[str, str]:
         sts = sts_client or boto3.client("sts", region_name=region)
-        c = sts.assume_role(RoleArn=role_arn, RoleSessionName=agent_id)["Credentials"]
+        kwargs = {"RoleArn": role_arn, "RoleSessionName": agent_id}
+        if source_identity is not None:
+            kwargs["SourceIdentity"] = source_identity
+        c = sts.assume_role(**kwargs)["Credentials"]
         return {
             "access_key": c["AccessKeyId"],
             "secret_key": c["SecretAccessKey"],

@@ -256,15 +256,93 @@ stable contract (claude-review Q5) — see `infra/lib/config.ts`:
 
 ## Teardown
 
+`cdk destroy` removes most resources, but a few survive by design (KMS key, orphaned
+log groups, and — if you deployed with `-c retainData=true` — the data stores). "Remove
+all traces" is the full sequence below.
+
+### Quick teardown (default `retainData=false`)
+
+Destroy both stacks in reverse dependency order — monitoring is decoupled, so drop it
+first:
+
 ```bash
-cd infra && npx cdk destroy
+cd infra
+AWS_PROFILE=<profile> npx cdk destroy VectorVaultMonitoringStack   # PR 5 (decoupled)
+AWS_PROFILE=<profile> npx cdk destroy VectorVaultMemoryStack       # PR 1 (core)
 ```
 
-**Data-loss caveat:** with the default `retainData=false`, `cdk destroy` deletes the
-vector bucket (all vectors), content bucket, and DynamoDB tables. The KMS key is
-*scheduled* for deletion (grace window). Deploy with `-c retainData=true` for any stack
-whose memory you need to keep. S3 Vectors has no undo for `DeleteVectors`; DynamoDB PITR
-and content-bucket versioning are the only vector-adjacent recovery levers.
+**Data-loss caveat:** with the default `retainData=false`, this deletes the vector
+bucket (all vectors), content bucket, and DynamoDB tables. S3 Vectors has **no undo** for
+`DeleteVectors` — once destroyed, the memories are gone. DynamoDB PITR and content-bucket
+versioning are the only vector-adjacent recovery levers, and both die with the stack.
+Deploy with `-c retainData=true` for any stack whose memory you need to keep.
+
+### What survives `cdk destroy` (must be handled explicitly)
+
+| Trace | Why it survives | Removal |
+|---|---|---|
+| **KMS key** `alias/vectorvault-memory` | A removal policy on a KMS key only *schedules* deletion — it enters a 7–30 day pending-deletion window, never immediate. | Self-deletes after the window; the alias frees when it does. To expedite: `aws kms schedule-key-deletion --key-id <id> --pending-window-in-days 7`. |
+| **Lambda log group** `/aws/lambda/vectorvault-ttl-worker` | Auto-created by Lambda at first invoke, not a CDK resource — so not destroyed. | `aws logs delete-log-group --log-group-name /aws/lambda/vectorvault-ttl-worker` |
+| **Data stores, if `-c retainData=true` was used** | `RemovalPolicy.RETAIN` orphans the vector bucket + 3 indexes, content bucket, CloudTrail log bucket, and 3 DynamoDB tables (still incurring cost). | Delete manually — see below. |
+| **CloudTrail event history** | The recorded AssumeRole / PutVectors events (incl. `sourceIdentity`) live in CloudTrail's 90-day history and any retained log bucket, regardless of teardown. | Expires on its own (90d); retained-bucket logs must be deleted manually. |
+| **CDK bootstrap** (`CDKToolkit`, `cdk-hnb659fds-*`) | Shared account infra — **not** VectorVault-specific; other CDK stacks in the account use it. | Leave it unless nothing else in the account uses CDK. |
+
+### Full "remove all traces" sequence
+
+```bash
+cd infra
+# 1. Both stacks (monitoring first — decoupled and safe to drop early)
+AWS_PROFILE=<profile> npx cdk destroy VectorVaultMonitoringStack --force
+AWS_PROFILE=<profile> npx cdk destroy VectorVaultMemoryStack --force
+
+# 2. KMS key — schedule deletion with the shortest window
+KEY_ID=$(aws kms describe-key --key-id alias/vectorvault-memory \
+  --query KeyMetadata.KeyId --output text --profile <profile> 2>/dev/null)
+[ -n "$KEY_ID" ] && aws kms schedule-key-deletion --key-id "$KEY_ID" \
+  --pending-window-in-days 7 --profile <profile>
+
+# 3. Orphaned Lambda log group
+aws logs delete-log-group --log-group-name /aws/lambda/vectorvault-ttl-worker \
+  --profile <profile> 2>/dev/null
+
+# 4. Verify nothing remains
+aws ssm get-parameters-by-path --path /vectorvault --recursive \
+  --query 'Parameters[].Name' --output text --profile <profile>            # expect empty
+aws s3vectors list-vector-buckets \
+  --query "vectorBuckets[?vectorBucketName=='agent-memory-store']" --profile <profile>   # expect []
+aws cloudformation describe-stacks \
+  --query "Stacks[?contains(StackName,'VectorVault')].StackName" --profile <profile>     # expect []
+```
+
+`--force` skips the confirmation prompt — drop it to have CDK confirm first (recommended,
+given the S3 Vectors no-undo caveat above).
+
+### If you deployed with `-c retainData=true`
+
+The stacks leave the data stores behind on destroy; remove them by hand:
+
+```bash
+# Vector bucket: delete each index, then the bucket (no recycle bin — irreversible)
+for idx in shared-team-memory private-planner private-researcher; do
+  aws s3vectors delete-index --vector-bucket-name agent-memory-store --index-name "$idx" --profile <profile>
+done
+aws s3vectors delete-vector-bucket --vector-bucket-name agent-memory-store --profile <profile>
+
+# Content + CloudTrail log buckets: empty, then remove
+aws s3 rm s3://<content-bucket> --recursive --profile <profile> && aws s3 rb s3://<content-bucket> --profile <profile>
+aws s3 rm s3://<trail-log-bucket> --recursive --profile <profile> && aws s3 rb s3://<trail-log-bucket> --profile <profile>
+
+# DynamoDB tables
+for t in memory-embed-cache memory-index memory-ttl-index; do
+  aws dynamodb delete-table --table-name "$t" --profile <profile>
+done
+```
+
+Resolve the physical bucket names from SSM *before* destroying the stack (they're
+account/Region-suffixed): `aws ssm get-parameter --name /vectorvault/content-bucket-name`.
+
+**Local artifacts** (not AWS): the repo, `.venv/`, and any `./galaxy-out` the galaxy tool
+wrote — delete by hand to clean the machine too.
 
 ---
 

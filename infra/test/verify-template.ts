@@ -114,6 +114,44 @@ const checks: Array<[string, () => void]> = [
     t.hasResourceProperties('AWS::Events::Rule', {
       ScheduleExpression: Match.stringLikeRegexp('rate\\(1 day'),
     })],
+
+  // --- Attribution: human roles ENFORCE sts:SourceIdentity (design-doc §5) -----
+  // Every human-assumable role's trust policy must (a) require a SourceIdentity to be
+  // present on AssumeRole and (b) allow the trusted principal to set it. This upgrades
+  // agent attribution from self-asserted (agent_id) to IAM-enforced. The TTL role is a
+  // Lambda service principal (no human) and is intentionally excluded.
+  ['human roles enforce + allow sts:SourceIdentity in their trust policy', () => {
+    const roles = t.findResources('AWS::IAM::Role');
+    const humanRoleNames = /Memory(Planner|Researcher|Auditor|Admin)Role/;
+    const humanRoles = Object.values(roles).filter((r) =>
+      humanRoleNames.test(String(r.Properties?.RoleName ?? '')),
+    );
+    if (humanRoles.length !== 4) {
+      throw new Error(`expected 4 human roles, found ${humanRoles.length}`);
+    }
+    for (const r of humanRoles) {
+      const doc = JSON.stringify(r.Properties?.AssumeRolePolicyDocument ?? {});
+      const name = String(r.Properties?.RoleName);
+      // (a) the assume statement is conditioned on SourceIdentity being present
+      if (!doc.includes('sts:SourceIdentity') || !doc.includes('StringLike')) {
+        throw new Error(`${name}: trust policy does not require sts:SourceIdentity`);
+      }
+      // (b) SetSourceIdentity is granted so the principal can stamp it
+      if (!doc.includes('sts:SetSourceIdentity')) {
+        throw new Error(`${name}: trust policy does not allow sts:SetSourceIdentity`);
+      }
+    }
+  }],
+
+  // TTL (Lambda service) role must NOT carry the SourceIdentity machinery.
+  ['TTL role trust policy has no SourceIdentity condition (service principal)', () => {
+    const roles = t.findResources('AWS::IAM::Role');
+    const ttl = Object.values(roles).find((r) => r.Properties?.RoleName === 'MemoryTtlRole');
+    if (!ttl) throw new Error('MemoryTtlRole not found');
+    if (JSON.stringify(ttl.Properties?.AssumeRolePolicyDocument ?? {}).includes('SourceIdentity')) {
+      throw new Error('MemoryTtlRole trust policy unexpectedly references SourceIdentity');
+    }
+  }],
 ];
 
 let failed = 0;

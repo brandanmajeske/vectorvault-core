@@ -83,13 +83,20 @@ def fetch_vectors(region: str, role: str) -> list[dict]:
     import boto3
 
     from vectorvault import Config
+    from vectorvault.tools import _source_identity
 
     ssm = boto3.client("ssm", region_name=region)
     config = Config.from_ssm(ssm)
     if role != "none":
         arn = ssm.get_parameter(Name=f"/vectorvault/role/{role}-arn")["Parameter"]["Value"]
-        creds = boto3.client("sts", region_name=region).assume_role(
-            RoleArn=arn, RoleSessionName="vv-galaxy")["Credentials"]
+        sts = boto3.client("sts", region_name=region)
+        # SourceIdentity is REQUIRED by the role trust policy (enforce mode, design-doc
+        # §5) — the assume fails without it. Derived from the caller's base identity.
+        creds = sts.assume_role(
+            RoleArn=arn,
+            RoleSessionName="vv-galaxy",
+            SourceIdentity=_source_identity(sts.get_caller_identity()),
+        )["Credentials"]
         s3v = boto3.client(
             "s3vectors", region_name=region,
             aws_access_key_id=creds["AccessKeyId"],

@@ -72,11 +72,25 @@ export class MemoryStack extends cdk.Stack {
     //   arn:aws:iam::<acct>:role/aws-reserved/sso.amazonaws.com/*/AWSReservedSSO_AdministratorAccess_*
     // is the robust way to pin assumption to the owner's SSO role.
     const trustedPrincipalArn: string | undefined = this.node.tryGetContext('trustedPrincipalArn');
-    const trustPrincipal: iam.IPrincipal = trustedPrincipalArn
-      ? new iam.PrincipalWithConditions(new iam.AccountRootPrincipal(), {
-          ArnLike: { 'aws:PrincipalArn': trustedPrincipalArn.split(',').map((s) => s.trim()) },
-        })
-      : new iam.AccountRootPrincipal();
+    // ENFORCE source identity (design-doc §5): every assumption of a human role MUST
+    // carry an sts:SourceIdentity (the real AWS principal, set by the client at
+    // assume time). This upgrades agent attribution from self-asserted to
+    // IAM-enforced — a session with no source identity is rejected at AssumeRole, and
+    // the value is sticky + immutable for the session's life and propagates to every
+    // downstream CloudTrail event. Folded into the trust principal so the condition
+    // lands on the generated AssumeRole statement.
+    const trustConditions: Record<string, Record<string, unknown>> = {
+      StringLike: { 'sts:SourceIdentity': '*' }, // require present (non-empty)
+    };
+    if (trustedPrincipalArn) {
+      trustConditions.ArnLike = {
+        'aws:PrincipalArn': trustedPrincipalArn.split(',').map((s) => s.trim()),
+      };
+    }
+    const trustPrincipal: iam.IPrincipal = new iam.PrincipalWithConditions(
+      new iam.AccountRootPrincipal(),
+      trustConditions,
+    );
 
     const alertEmail: string = this.node.tryGetContext('alertEmail') ?? 'alerts@example.com'; // REPLACE: -c alertEmail=you@company.com
     // Monthly hard cost cap in USD (design-doc §6). Tune per deployment: -c budgetUsd=250
@@ -361,6 +375,22 @@ export class MemoryStack extends cdk.Stack {
     memoryIndexTable.grantReadWriteData(adminRole); // canonical-row lookup + delete
     ttlIndexTable.grantReadWriteData(adminRole);
     key.grantEncryptDecrypt(adminRole);
+
+    // --- SourceIdentity: permit (and, via trustPrincipal above, require) it ---
+    // assumedBy only emits sts:AssumeRole; setting a source identity is a distinct
+    // action that each human role must also allow for the trusted principal. Paired
+    // with the StringLike sts:SourceIdentity='*' condition on trustPrincipal, this is
+    // ENFORCE mode: no source identity -> AssumeRole denied (design-doc §5). Excludes
+    // the TTL role — it is assumed by the Lambda service, no human behind it.
+    const allowSetSourceIdentity = (role: iam.Role) =>
+      role.assumeRolePolicy?.addStatements(
+        new iam.PolicyStatement({
+          sid: 'AllowSetSourceIdentity',
+          actions: ['sts:SetSourceIdentity'],
+          principals: [trustPrincipal],
+        }),
+      );
+    [plannerRole, researcherRole, auditorRole, adminRole].forEach(allowSetSourceIdentity);
 
     // --- TTL Lambda: EventBridge daily -> lifecycle sweep --------------------
     // DRY_RUN defaults to 'true' so the first deploy logs intended actions and

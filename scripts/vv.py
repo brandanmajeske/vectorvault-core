@@ -39,7 +39,7 @@ from typing import Any
 import boto3
 
 from vectorvault import Config, MemoryClient
-from vectorvault.tools import memory_client_for_agent
+from vectorvault.tools import _source_identity, memory_client_for_agent
 
 
 def build_client(args: argparse.Namespace) -> MemoryClient:
@@ -49,7 +49,10 @@ def build_client(args: argparse.Namespace) -> MemoryClient:
     if args.role in ("planner", "researcher", "auditor", "admin"):
         arn = ssm.get_parameter(Name=f"/vectorvault/role/{args.role}-arn")["Parameter"]["Value"]
         return memory_client_for_agent(args.role, args.agent_id, config, role_arn=arn)
-    return MemoryClient.from_config(config, args.agent_id)
+    # Ambient credentials (no role hop): still stamp the real principal on writes by
+    # deriving it from the caller's own identity (design-doc §5).
+    stored_by = _source_identity(boto3.client("sts", region_name=args.region).get_caller_identity())
+    return MemoryClient.from_config(config, args.agent_id, stored_by=stored_by)
 
 
 def emit(obj: Any) -> None:

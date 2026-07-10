@@ -167,11 +167,17 @@ def test_execute_handler_error_is_wrapped(client, fakes):
 
 
 class _FakeSTS:
-    def __init__(self):
+    def __init__(self, arn="arn:aws:sts::123:assumed-role/AWSReservedSSO_Dev_x/jane.doe@corp.com"):
         self.calls = []
+        self.source_identities = []
+        self._arn = arn
 
-    def assume_role(self, RoleArn, RoleSessionName):  # noqa: N803
+    def get_caller_identity(self):
+        return {"Arn": self._arn, "UserId": "AROAEXAMPLE:jane.doe@corp.com", "Account": "123"}
+
+    def assume_role(self, RoleArn, RoleSessionName, SourceIdentity=None):  # noqa: N803
         self.calls.append((RoleArn, RoleSessionName))
+        self.source_identities.append(SourceIdentity)
         return {"Credentials": {"AccessKeyId": "a", "SecretAccessKey": "s", "SessionToken": "t"}}
 
 
@@ -238,6 +244,27 @@ def test_memory_client_for_agent_assumes_role_with_session_name(config, fakes):
     assert client.agent_id == "researcher-7"
     # RoleSessionName == agent_id gives CloudTrail per-agent attribution (S2).
     assert sts.calls == [("arn:aws:iam::123:role/MemoryResearcherRole", "researcher-7")]
+    # SourceIdentity is the real principal, derived from get_caller_identity (design-doc §5).
+    assert sts.source_identities == ["jane.doe@corp.com"]
+    # ...and denormalized onto the client so writes stamp stored_by.
+    assert client._stored_by == "jane.doe@corp.com"
+
+
+def test_source_identity_derivation():
+    from vectorvault.tools import _source_identity
+
+    # SSO assumed-role ARN -> trailing session name (the email).
+    assert _source_identity({"Arn": "arn:aws:sts::1:assumed-role/Role/jane@corp.com"}) == "jane@corp.com"
+    # No slash in ARN -> fall back to UserId.
+    assert _source_identity({"Arn": "", "UserId": "AIDEXAMPLE"}) == "AIDEXAMPLE"
+    # Illegal chars sanitized to '-'; result stays within the STS charset.
+    assert _source_identity({"Arn": "x/a b:c*d"}) == "a-b-c-d"
+    # Reserved 'aws:' prefix stripped.
+    assert not _source_identity({"Arn": "x/aws:reserved"}).startswith("aws:")
+    # 64-char cap.
+    assert len(_source_identity({"Arn": "x/" + "z" * 200})) == 64
+    # Nothing usable -> 'unknown'.
+    assert _source_identity({}) == "unknown"
 
 
 def test_config_and_agent_id_accessors(config, fakes):
