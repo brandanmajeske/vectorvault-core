@@ -10,9 +10,10 @@ or share. The 3D page embeds the prebuilt Rust/WASM camera core
 
 Keyless like everything else here: AWS credentials only.
 
-    AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv_galaxy.py            # 3D, opens browser
-    ... vv_galaxy.py --mode both --out ./galaxy-out --no-open        # 2D + 3D, just write
-    ... vv_galaxy.py --role none                                     # ambient creds (no role assume)
+    AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv_galaxy.py            # generate + serve http://127.0.0.1:8777
+    ... vv_galaxy.py --mode both --no-open                           # serve 2D + 3D, don't launch a browser
+    ... vv_galaxy.py --no-serve                                      # just write files (CI/scripts)
+    ... vv_galaxy.py --port 9000 --bind 0.0.0.0                      # custom port / LAN exposure (see warning)
     ... vv_galaxy.py --rebuild-wasm                                  # re-run cargo first (needs Rust)
 
 See docs/memory-galaxy.md.
@@ -153,6 +154,48 @@ def build_html(template: Path, points: list[dict], wasm_b64: str | None) -> str:
     return html
 
 
+def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser: bool) -> int:
+    """Serve the generated pages over HTTP until Ctrl+C. ``/`` redirects to the newest
+    page (the 3D galaxy when both were generated — it's written last)."""
+    import http.server
+
+    index = written[-1].name
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, directory=str(out_dir), **kw)
+
+        def do_GET(self):  # noqa: N802 (http.server API)
+            if self.path in ("/", "/index.html"):
+                self.send_response(302)
+                self.send_header("Location", "/" + index)
+                self.end_headers()
+                return
+            super().do_GET()
+
+        def log_message(self, fmt, *args):
+            print(f"  [galaxy] {self.address_string()} {fmt % args}")
+
+    try:
+        httpd = http.server.ThreadingHTTPServer((bind, port), Handler)
+    except OSError as exc:
+        print(f"cannot bind {bind}:{port} ({exc.strerror}); try --port <other>", file=sys.stderr)
+        return 1
+    if bind not in ("127.0.0.1", "localhost", "::1"):
+        print(f"WARNING: binding {bind} exposes your memories beyond this machine", file=sys.stderr)
+    url = f"http://{'127.0.0.1' if bind == '0.0.0.0' else bind}:{port}/"
+    print(f"serving the galaxy at {url}  (Ctrl+C to stop)")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nstopped")
+    finally:
+        httpd.server_close()
+    return 0
+
+
 def rebuild_wasm() -> None:
     """Re-run cargo (wasm32-unknown-unknown) and refresh the committed base64."""
     subprocess.run(
@@ -176,7 +219,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--active", action="store_true",
                    help="Only live memories (status == 'active'): hide superseded version "
                         "history and archived records from the counts and the rendered galaxy.")
-    p.add_argument("--no-open", action="store_true", help="Write files without opening a browser.")
+    p.add_argument("--no-open", action="store_true", help="Don't launch a browser.")
+    p.add_argument("--no-serve", action="store_true",
+                   help="Just write the files; don't start the web server (CI/scripts).")
+    p.add_argument("--port", type=int, default=8777, help="Web server port (default 8777).")
+    p.add_argument("--bind", default="127.0.0.1",
+                   help="Bind address (default 127.0.0.1 — the pages contain real memories; "
+                        "0.0.0.0 exposes them on your network).")
     p.add_argument("--rebuild-wasm", action="store_true",
                    help="Re-run cargo for the 3D core first (needs the Rust wasm32 target).")
     args = p.parse_args(argv)
@@ -214,9 +263,11 @@ def main(argv: list[str] | None = None) -> int:
 
     for f in written:
         print(f"wrote {f} ({f.stat().st_size:,} bytes)")
-    if not args.no_open and written:
-        webbrowser.open(written[-1].as_uri())
-    return 0
+    if args.no_serve:
+        if not args.no_open and written:
+            webbrowser.open(written[-1].as_uri())  # old behavior: open the file directly
+        return 0
+    return serve(out_dir, written, args.port, args.bind, open_browser=not args.no_open)
 
 
 if __name__ == "__main__":

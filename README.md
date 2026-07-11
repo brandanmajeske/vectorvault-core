@@ -95,7 +95,7 @@ under the auditor role, no extra deps:
 
 ```bash
 AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv_galaxy.py    # → ./galaxy-out, opens browser
-vv --galaxy                                               # same, with scripts/vv on your PATH
+vv --galaxy                                               # generate + serve http://127.0.0.1:8777
 ```
 
 See [docs/memory-galaxy.md](docs/memory-galaxy.md).

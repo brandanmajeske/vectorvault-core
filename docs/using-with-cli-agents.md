@@ -64,7 +64,7 @@ AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv.py <command> [args]
 | `archive <key>` | Retract a wrong memory (stops surfacing; GC'd after 30-day grace). |
 | `restore <key>` | Undo a bad correction or archive. |
 | `purge <canonical_id>` | **Hard-delete** a canonical group (vector + content + index row). Needs `--role admin` or ambient admin creds. |
-| `galaxy [flags]` | Render + open the [Memory Galaxy](memory-galaxy.md) from the live vault (alias `vv --galaxy`; flags pass through to `vv_galaxy.py`). |
+| `galaxy [flags]` | Render the [Memory Galaxy](memory-galaxy.md) from the live vault and serve it at `http://127.0.0.1:8777` (alias `vv --galaxy`; flags pass through to `vv_galaxy.py`). |
 
 **Global flags:** `--region` (default `us-west-2`), `--role`, `--agent-id`.
 

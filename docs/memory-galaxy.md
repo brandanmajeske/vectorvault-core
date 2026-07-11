@@ -16,8 +16,13 @@ open them locally, host them anywhere, or share the file.
 ## Generate it (any time, from the live vault)
 
 ```bash
-AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv_galaxy.py          # 3D → ./galaxy-out, opens browser
+AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv_galaxy.py   # generate + serve http://127.0.0.1:8777
 ```
+
+The galaxy is generated fresh from the vault, then **served over HTTP on port 8777**
+(`/` redirects to the newest page; Ctrl+C stops the server). It binds **localhost only**
+by default — the pages contain your real memories; `--bind 0.0.0.0` exposes them on your
+network and warns accordingly.
 
 Or, with the `vv` launcher on your PATH, just:
 
@@ -37,7 +42,10 @@ Options:
 --out DIR              # default ./galaxy-out (gitignored)
 --role auditor|planner|researcher|none   # default auditor — the read-only role
 --active               # only live memories: hide superseded version history + archived records
---no-open              # just write the files
+--port 8777            # web server port
+--bind 127.0.0.1       # bind address (0.0.0.0 = LAN exposure, warned)
+--no-open              # don't launch a browser
+--no-serve             # just write the files, no server (CI/scripts; opens file:// unless --no-open)
 --rebuild-wasm         # re-run cargo for the 3D core first (needs rustup target wasm32-unknown-unknown)
 ```
 
