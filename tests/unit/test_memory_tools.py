@@ -198,6 +198,34 @@ class _FakeSession:
         return self._ddb
 
 
+def test_refreshable_session_reassumes_after_expiry():
+    """Long-lived processes (MCP servers, daemons): expired role creds must trigger a
+    re-assume on next use instead of dying — and each refresh may use a fresh chain."""
+    from datetime import UTC, datetime, timedelta
+
+    from vectorvault.tools.memory_tools import refreshable_assumed_session
+
+    class _ExpiringSTS:
+        def __init__(self):
+            self.calls = 0
+
+        def assume_role(self, RoleArn, RoleSessionName):  # noqa: N803
+            self.calls += 1
+            return {"Credentials": {
+                "AccessKeyId": f"AKID{self.calls}", "SecretAccessKey": "s", "SessionToken": "t",
+                # already inside the mandatory-refresh window => next access re-assumes
+                "Expiration": datetime.now(UTC) + timedelta(seconds=1),
+            }}
+
+    sts = _ExpiringSTS()
+    session = refreshable_assumed_session(
+        "arn:aws:iam::123:role/MemoryAuditorRole", "galaxy-daemon", "us-west-2", sts_client=sts)
+    assert sts.calls == 1  # initial assume at construction
+    frozen = session.get_credentials().get_frozen_credentials()
+    assert sts.calls >= 2  # expiry forced a re-assume on first use
+    assert frozen.access_key == f"AKID{sts.calls}"
+
+
 def test_memory_client_for_agent_assumes_role_with_session_name(config, fakes):
     sts = _FakeSTS()
     session = _FakeSession(fakes, config)

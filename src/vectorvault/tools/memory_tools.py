@@ -446,18 +446,54 @@ def memory_client_for_agent(
     role); ``role_arn`` is the ARN PR 1 publishes to SSM at
     ``/vectorvault/role/<role>-arn``. ``sts_client`` / ``session`` are injectable
     for testing.
+
+    **Credentials auto-refresh** (long-lived processes: MCP servers, daemons).
+    Assumed-role credentials expire (~1 h); a static session silently dies mid-
+    session. This builds the session on :class:`~botocore.credentials.
+    RefreshableCredentials`, which re-assumes the role before expiry — and each
+    refresh constructs a *fresh* STS client from the default credential chain, so
+    after the base SSO token expires a plain ``aws sso login`` heals a still-
+    running server on its next call, no restart needed. (An injected ``session``
+    bypasses all of this — the test path keeps the original one-shot assume.)
     """
     import boto3
 
-    sts = sts_client or boto3.client("sts", region_name=config.region)
-    creds = sts.assume_role(RoleArn=role_arn, RoleSessionName=agent_id)["Credentials"]
-    assumed = session or boto3.session.Session(
-        aws_access_key_id=creds["AccessKeyId"],
-        aws_secret_access_key=creds["SecretAccessKey"],
-        aws_session_token=creds["SessionToken"],
-        region_name=config.region,
-    )
+    if session is not None:  # test/DI path: one-shot assume, caller owns the session
+        sts = sts_client or boto3.client("sts", region_name=config.region)
+        sts.assume_role(RoleArn=role_arn, RoleSessionName=agent_id)
+        return MemoryClient.from_config(config, agent_id, session=session, **client_kwargs)
+
+    assumed = refreshable_assumed_session(role_arn, agent_id, config.region, sts_client=sts_client)
     return MemoryClient.from_config(config, agent_id, session=assumed, **client_kwargs)
+
+
+def refreshable_assumed_session(role_arn: str, agent_id: str, region: str, *, sts_client: Any = None) -> Any:
+    """A ``boto3.Session`` whose assumed-role credentials auto-refresh before expiry.
+
+    Each refresh constructs a *fresh* STS client from the default credential chain
+    (unless ``sts_client`` is injected for tests), so it re-reads the SSO token
+    cache — after the base SSO session expires, a plain ``aws sso login`` heals a
+    still-running process on its next AWS call. No restart needed.
+    """
+    import boto3
+    from botocore.credentials import RefreshableCredentials
+    from botocore.session import get_session as _botocore_session
+
+    def _refresh() -> dict[str, str]:
+        sts = sts_client or boto3.client("sts", region_name=region)
+        c = sts.assume_role(RoleArn=role_arn, RoleSessionName=agent_id)["Credentials"]
+        return {
+            "access_key": c["AccessKeyId"],
+            "secret_key": c["SecretAccessKey"],
+            "token": c["SessionToken"],
+            "expiry_time": c["Expiration"].isoformat(),
+        }
+
+    creds = RefreshableCredentials.create_from_metadata(
+        metadata=_refresh(), refresh_using=_refresh, method="sts-assume-role")
+    bc = _botocore_session()
+    bc._credentials = creds  # botocore has no public setter; standard recipe
+    return boto3.session.Session(botocore_session=bc, region_name=region)
 
 
 # --- Minimal JSON-Schema -> pydantic (for LangChain args validation) ------------

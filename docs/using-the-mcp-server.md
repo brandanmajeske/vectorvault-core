@@ -379,7 +379,7 @@ memory; scope it and you stay within one tenant's corpus.
 |---|---|
 | `claude mcp list` shows ✗ / failed to connect | Path to `vectorvault-mcp` must be **absolute** (canonical: `~/.venvs/vectorvault/bin/vectorvault-mcp`); confirm the Step 0 install and that `AWS_PROFILE` is set in the server `env`. |
 | Server rejects a role/feature that's in the docs (e.g. `auditor`) | The global venv was installed **non-editable** and snapshots old code. Reinstall editable: `~/.venvs/vectorvault/bin/pip install -e "<repo>[mcp]"` — then upgrades are just `git pull`. |
-| `Token has expired` / `sso` errors in tool results | `aws sso login --profile <your-profile>` |
+| `Token has expired` / `sso` errors in tool results | `aws sso login --profile <your-profile>` — **that's it; no restart.** The server's role credentials auto-refresh (`RefreshableCredentials`), and each refresh re-reads the SSO token cache, so the next tool call heals a still-running server. |
 | `retrieve_memory` returns nothing | Check the `filters` (`team_id`/`task_id`) match what was stored; try without filters; expired/superseded/archived memories don't surface. |
 | Tool call denied on a private index | A role reaches only `shared-team-memory` + its own private index — index isolation working as intended. |
 | Agent won't call the tool | Make sure it's approved/allowlisted (`--allowedTools mcp__vectorvault__*` for Claude, `--allow mcp__vectorvault__<tool>` for Grok in headless mode). |
