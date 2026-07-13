@@ -42,3 +42,8 @@ class GalaxySearch:
             }
             for r in records
         ]
+
+    def get(self, key: str) -> dict | None:
+        """Full record for ``key`` as a plain dict, or None if it does not exist."""
+        rec = self._client.get_memory(key)
+        return rec.model_dump() if rec is not None else None

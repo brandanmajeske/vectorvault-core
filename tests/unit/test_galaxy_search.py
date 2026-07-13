@@ -72,3 +72,26 @@ def test_search_distance_none_passes_through():
     client = _FakeClient(records=[_Rec("mem_a", content_summary="s", distance=None)])
     out = GalaxySearch(client, active_only=True).search("q")
     assert out[0]["distance"] is None
+
+
+class _DumpRec(_Rec):
+    """Adds model_dump() so get() can serialize like a real pydantic MemoryRecord."""
+
+    def model_dump(self):
+        return {"key": self.key, "content": self.content, "type": self.memory_type,
+                "team": self.team_id, "agent": self.agent_id, "distance": self.distance}
+
+
+def test_get_returns_full_record_dict_for_known_key():
+    rec = _DumpRec("mem_a", content="the whole body")
+    client = _FakeClient(by_key={"mem_a": rec})
+    out = GalaxySearch(client, active_only=True).get("mem_a")
+    assert client.get_calls == ["mem_a"]
+    assert out["key"] == "mem_a"
+    assert out["content"] == "the whole body"
+
+
+def test_get_returns_none_for_missing_key():
+    client = _FakeClient(by_key={})
+    assert GalaxySearch(client, active_only=True).get("mem_nope") is None
+    assert client.get_calls == ["mem_nope"]
