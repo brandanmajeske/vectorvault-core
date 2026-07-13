@@ -47,3 +47,26 @@ class GalaxySearch:
         """Full record for ``key`` as a plain dict, or None if it does not exist."""
         rec = self._client.get_memory(key)
         return rec.model_dump() if rec is not None else None
+
+
+def handle_search(backend: GalaxySearch | None, query: str | None) -> tuple[int, list | dict]:
+    """Route logic for GET /search?q= — pure, socket-free (unit-testable)."""
+    if backend is None:
+        return 503, {"error": "search is disabled on this page (no live backend)"}
+    q = (query or "").strip()
+    if not q:
+        return 400, {"error": "missing query parameter 'q'"}
+    return 200, backend.search(q)
+
+
+def handle_get(backend: GalaxySearch | None, key: str | None) -> tuple[int, dict]:
+    """Route logic for GET /memory?key= — pure, socket-free (unit-testable)."""
+    if backend is None:
+        return 503, {"error": "memory fetch is disabled on this page (no live backend)"}
+    k = (key or "").strip()
+    if not k:
+        return 400, {"error": "missing query parameter 'key'"}
+    rec = backend.get(k)
+    if rec is None:
+        return 404, {"error": f"no memory with key: {k}"}
+    return 200, rec

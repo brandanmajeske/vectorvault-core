@@ -95,3 +95,35 @@ def test_get_returns_none_for_missing_key():
     client = _FakeClient(by_key={})
     assert GalaxySearch(client, active_only=True).get("mem_nope") is None
     assert client.get_calls == ["mem_nope"]
+
+
+def test_handle_search_statuses():
+    client = _FakeClient(records=[_Rec("mem_a", content_summary="s")])
+    backend = GalaxySearch(client, active_only=True)
+    handle_search = galaxy_search.handle_search
+
+    status, body = handle_search(backend, "login loop")
+    assert status == 200 and body[0]["key"] == "mem_a"
+
+    status, body = handle_search(backend, "")           # blank query
+    assert status == 400 and "error" in body
+    status, body = handle_search(backend, None)          # missing query
+    assert status == 400 and "error" in body
+    status, body = handle_search(None, "q")              # no backend (static page)
+    assert status == 503 and "error" in body
+
+
+def test_handle_get_statuses():
+    rec = _DumpRec("mem_a", content="body")
+    client = _FakeClient(by_key={"mem_a": rec})
+    backend = GalaxySearch(client, active_only=True)
+    handle_get = galaxy_search.handle_get
+
+    status, body = handle_get(backend, "mem_a")
+    assert status == 200 and body["key"] == "mem_a"
+    status, body = handle_get(backend, "mem_nope")       # unknown key
+    assert status == 404 and "error" in body
+    status, body = handle_get(backend, "")               # blank key
+    assert status == 400 and "error" in body
+    status, body = handle_get(None, "mem_a")             # no backend
+    assert status == 503 and "error" in body
