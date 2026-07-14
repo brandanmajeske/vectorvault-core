@@ -592,6 +592,31 @@ const CORE_B64 = "__WASM__";
   }
   tourBtn.onclick = () => tourTimer ? stopTour() : startTour();
 
+  // --- refresh -----------------------------------------------------------------------------------
+  const refreshBtn = document.getElementById('refresh');
+  refreshBtn.onclick = async () => {
+    refreshBtn.disabled = true;
+    refreshBtn.classList.remove('error');
+    refreshBtn.classList.add('spin');
+    try {
+      const resp = await fetch('/refresh');
+      const body = await resp.json();
+      if (!resp.ok) throw new Error(body.error || 'refresh failed');
+      DATA = body;
+      applyData();
+    } catch (err) {
+      refreshBtn.classList.add('error');
+      refreshBtn.title = 'refresh failed — try again';
+      setTimeout(() => {
+        refreshBtn.classList.remove('error');
+        refreshBtn.title = 'Refresh from vault';
+      }, 2000);
+    } finally {
+      refreshBtn.classList.remove('spin');
+      refreshBtn.disabled = false;
+    }
+  };
+
   // --- drawer + search ---------------------------------------------------------------------------------
   const drawer = document.getElementById('drawer');
   const resultsEl = drawer.querySelector('.results');
