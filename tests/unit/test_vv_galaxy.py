@@ -60,3 +60,8 @@ def test_build_html_requires_wasm_when_placeholder_present(tmp_path):
     with pytest.raises(SystemExit):
         vv_galaxy.build_html(tpl, [], None)
     assert "AAAA" in vv_galaxy.build_html(tpl, [], "AAAA")
+
+
+def test_build_search_backend_none_for_ambient_role():
+    # role == "none" => no scoped client to attribute reads => search disabled.
+    assert vv_galaxy.build_search_backend("us-west-2", "none", active_only=False) is None

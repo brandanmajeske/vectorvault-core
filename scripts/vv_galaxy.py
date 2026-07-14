@@ -34,6 +34,13 @@ REPO = Path(__file__).resolve().parent.parent
 CRATE = REPO / "viz" / "galaxy3d"
 TEMPLATES = REPO / "viz" / "templates"
 
+import importlib.util as _il  # noqa: E402 (sibling import needs Path/REPO defined above)
+
+_gs_spec = _il.spec_from_file_location(
+    "galaxy_search", str(Path(__file__).resolve().parent / "galaxy_search.py"))
+galaxy_search = _il.module_from_spec(_gs_spec)
+_gs_spec.loader.exec_module(galaxy_search)
+
 # --- PCA (pure Python; N is small so the N x N Gram matrix is cheap) ---------------
 
 
@@ -118,6 +125,28 @@ def fetch_vectors(region: str, role: str) -> list[dict]:
         if not token:
             break
     return vectors
+
+
+def build_search_backend(region: str, role: str, active_only: bool):
+    """Build the live search backend (GalaxySearch) under the read role, or None.
+
+    Returns None for role == "none": with ambient credentials there is no scoped
+    principal to attribute reads to, so we keep search off rather than run it
+    un-attributed. The /search and /memory endpoints then answer 503 and the UI
+    hides the semantic affordance.
+    """
+    import boto3
+
+    from vectorvault import Config, MemoryClient
+    from vectorvault.tools import memory_client_for_agent
+
+    if role == "none":
+        return None
+    ssm = boto3.client("ssm", region_name=region)
+    config = Config.from_ssm(ssm)
+    arn = ssm.get_parameter(Name=f"/vectorvault/role/{role}-arn")["Parameter"]["Value"]
+    client: MemoryClient = memory_client_for_agent(role, "vv-galaxy", config, role_arn=arn)
+    return galaxy_search.GalaxySearch(client, active_only=active_only)
 
 
 def active_only(vectors: list[dict]) -> list[dict]:
