@@ -60,11 +60,12 @@
   #refresh:hover { border-color: var(--accent); box-shadow: 0 0 12px rgba(142,162,255,.35); }
   #refresh:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   #refresh:disabled { cursor: default; opacity: .6; }
-  #refresh.spin { animation: refresh-spin .8s linear infinite; }
+  #refresh .icon { display: inline-block; }
+  #refresh.spin .icon { animation: refresh-spin .8s linear infinite; will-change: transform; }
   #refresh.error { color: #ff6b6b; border-color: #ff6b6b; }
   @keyframes refresh-spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) {
-    #refresh.spin { animation: none; }
+    #refresh.spin .icon { animation: none; }
   }
 
   #legend {
@@ -151,7 +152,7 @@
   <div id="stats"></div>
   <div id="controls">
     <button id="tour" aria-pressed="false">✦ tour</button>
-    <button id="refresh" aria-label="Refresh galaxy from the vault" title="Refresh from vault">↻</button>
+    <button id="refresh" aria-label="Refresh galaxy from the vault" title="Refresh from vault"><span class="icon">↻</span></button>
     <input id="search" type="search" placeholder="search memories…" aria-label="Search memories">
   </div>
 </header>
