@@ -27,6 +27,7 @@ import math
 import random
 import subprocess
 import sys
+import urllib.parse
 import webbrowser
 from pathlib import Path
 
@@ -192,7 +193,8 @@ def build_html(template: Path, points: list[dict], wasm_b64: str | None) -> str:
     return html
 
 
-def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser: bool) -> int:
+def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser: bool,
+          backend=None) -> int:
     """Serve the generated pages over HTTP until Ctrl+C. ``/`` redirects to the newest
     page (the 3D galaxy when both were generated — it's written last)."""
     import http.server
@@ -203,7 +205,24 @@ def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser
         def __init__(self, *a, **kw):
             super().__init__(*a, directory=str(out_dir), **kw)
 
+        def _send_json(self, status, payload):  # noqa: N802 not needed (private helper)
+            body = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):  # noqa: N802 (http.server API)
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path == "/search":
+                q = urllib.parse.parse_qs(parsed.query).get("q", [None])[0]
+                self._send_json(*galaxy_search.handle_search(backend, q))
+                return
+            if parsed.path == "/memory":
+                key = urllib.parse.parse_qs(parsed.query).get("key", [None])[0]
+                self._send_json(*galaxy_search.handle_get(backend, key))
+                return
             if self.path in ("/", "/index.html"):
                 self.send_response(302)
                 self.send_header("Location", "/" + index)
@@ -267,6 +286,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-open", action="store_true", help="Don't launch a browser.")
     p.add_argument("--no-serve", action="store_true",
                    help="Just write the files; don't start the web server (CI/scripts).")
+    p.add_argument("--no-search", action="store_true",
+                   help="Disable the live semantic search endpoints (/search, /memory). "
+                        "The page still renders and the lexical filter still works.")
     p.add_argument("--port", type=int, default=8777,
                    help="Web server port (default 8777; 0 picks a free port).")
     p.add_argument("--bind", default="127.0.0.1",
@@ -313,7 +335,9 @@ def main(argv: list[str] | None = None) -> int:
         if not args.no_open and written:
             webbrowser.open(written[-1].as_uri())  # old behavior: open the file directly
         return 0
-    return serve(out_dir, written, args.port, args.bind, open_browser=not args.no_open)
+    backend = None if args.no_search else build_search_backend(args.region, args.role, args.active)
+    return serve(out_dir, written, args.port, args.bind,
+                 open_browser=not args.no_open, backend=backend)
 
 
 if __name__ == "__main__":
