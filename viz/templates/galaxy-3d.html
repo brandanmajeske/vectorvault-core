@@ -193,11 +193,18 @@ const CORE_B64 = "__WASM__";
       const bytes = Uint8Array.from(atob(CORE_B64), c => c.charCodeAt(0));
       const { instance } = await WebAssembly.instantiate(bytes, {});
       const e = instance.exports;
-      const ptr = e.init(N);
+      let curN = -1, ptr = 0;
+      function resize(newN) { // re-init(): reallocates STARS/OUT in wasm memory, may relocate ptr
+        if (newN === curN) return;
+        ptr = e.init(newN);
+        curN = newN;
+      }
+      resize(N);
       return {
         kind: 'rust-wasm ⚙',
-        stars: () => new Float32Array(e.memory.buffer, ptr, N * 3),
-        out: () => new Float32Array(e.memory.buffer, e.out_ptr(), N * 5),
+        resize,
+        stars: () => new Float32Array(e.memory.buffer, ptr, curN * 3),
+        out: () => new Float32Array(e.memory.buffer, e.out_ptr(), curN * 5),
         orbit: (a, b) => e.orbit(a, b), flick: (a, b) => e.flick(a, b),
         pan: (a, b) => e.pan(a, b),
         dolly: f => e.dolly(f), keys: (m, dt) => e.keys(m, dt),
@@ -215,10 +222,16 @@ const CORE_B64 = "__WASM__";
     const LIM = 1.45;
     const c = { yaw: .7, pitch: .32, dist: 9, tdist: 3.1, tx: 0, ty: 0, tz: 0,
                 ttx: 0, tty: 0, ttz: 0, yv: 0, pv: 0, spin: 0, fpx: 800 };
-    const stars = new Float32Array(N * 3), out = new Float32Array(N * 5);
+    let stars = new Float32Array(N * 3), out = new Float32Array(N * 5), curN = N;
     const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+    function resize(newN) { // reallocate fixed-size buffers when the star count changes
+      if (newN === curN) return;
+      stars = new Float32Array(newN * 3);
+      out = new Float32Array(newN * 5);
+      curN = newN;
+    }
     const api = {
-      kind: 'js fallback', stars: () => stars, out: () => out,
+      kind: 'js fallback', resize, stars: () => stars, out: () => out,
       orbit(dx, dy) { // direct 1:1 drive while dragging (matches Rust core)
         const G = .0024;
         c.yaw += dx * G;
@@ -293,6 +306,7 @@ const CORE_B64 = "__WASM__";
 
   function applyData() { // (re)computes everything derived from DATA — run at load and on refresh
     N = DATA.length;
+    core.resize(N); // no-op if N is unchanged from the core's current allocation
     core.stars().set(DATA.flatMap(d => [d.x, d.y, d.z]));
 
     agents = [...new Set(DATA.map(d => d.agent))];
