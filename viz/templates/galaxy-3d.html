@@ -653,7 +653,10 @@ const CORE_B64 = "__WASM__";
     try {
       const resp = await fetch('/memory?key=' + encodeURIComponent(key));
       const rec = await resp.json();
-      if (!resp.ok) { drawer.querySelector('.body').textContent = rec.error || 'not found'; return; }
+      if (!resp.ok) {
+        drawer.querySelector('.body').textContent = rec.error || 'not found';
+        setMode('detail'); drawer.classList.add('open'); return;
+      }
       const shown = flyToKey(key);
       openDrawer({
         key: rec.key, agent: rec.agent_id, stored_by: rec.stored_by || '—',
