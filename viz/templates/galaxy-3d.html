@@ -51,6 +51,22 @@
   #tour.on { color: var(--ink); background: rgba(142,162,255,.18); }
   #tour:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+  #refresh {
+    background: var(--panel); color: var(--accent); border: 1px solid var(--line);
+    border-radius: 999px; width: 30px; height: 30px; font-size: 15px; cursor: pointer;
+    transition: border-color .2s, box-shadow .2s, color .2s;
+    display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  }
+  #refresh:hover { border-color: var(--accent); box-shadow: 0 0 12px rgba(142,162,255,.35); }
+  #refresh:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #refresh:disabled { cursor: default; opacity: .6; }
+  #refresh.spin { animation: refresh-spin .8s linear infinite; }
+  #refresh.error { color: #ff6b6b; border-color: #ff6b6b; }
+  @keyframes refresh-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    #refresh.spin { animation: none; }
+  }
+
   #legend {
     position: fixed; left: 14px; bottom: 14px; z-index: 5;
     display: flex; flex-direction: column; gap: 6px; max-width: 46vw;
@@ -135,6 +151,7 @@
   <div id="stats"></div>
   <div id="controls">
     <button id="tour" aria-pressed="false">✦ tour</button>
+    <button id="refresh" aria-label="Refresh galaxy from the vault" title="Refresh from vault">↻</button>
     <input id="search" type="search" placeholder="search memories…" aria-label="Search memories">
   </div>
 </header>
@@ -165,8 +182,8 @@
 const CORE_B64 = "__WASM__";
 
 (async () => {
-  const DATA = JSON.parse(document.getElementById('data').textContent);
-  const N = DATA.length;
+  let DATA = JSON.parse(document.getElementById('data').textContent);
+  let N = DATA.length;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // --- core: Rust/WASM camera + projection; identical JS math as fallback ------------
@@ -265,51 +282,59 @@ const CORE_B64 = "__WASM__";
   }
 
   const core = await makeCore();
-  core.stars().set(DATA.flatMap(d => [d.x, d.y, d.z]));
+  let agents, color, tasks, clusters;
+  let off = new Set();
+  const legend = document.getElementById('legend');
 
-  // --- palette + derived ---------------------------------------------------------------
   const PINNED = { 'ingest-bot': '#ffb45e', 'gemma-local': '#4de8c2', 'grok-cli': '#ff5470',
                    'grok-explore': '#e06bff', 'claude-code': '#7aa2ff' };
   const FALLBACK = ['#9dff8e', '#ffd166', '#6ee7ff', '#ff9ecb', '#c3b0ff'];
-  const agents = [...new Set(DATA.map(d => d.agent))];
-  const color = {}; let fi = 0;
-  agents.forEach(a => color[a] = PINNED[a] ?? FALLBACK[fi++ % FALLBACK.length]);
-  DATA.forEach((d, i) => {
-    d.i = i;
-    d.r = 2.4 + Math.min(3, d.text.length / 120) + (d.version - 1) * 1.2;
-    d.phase = (i * 2.399) % (Math.PI * 2);
-    d.dim = d.status !== 'active';
-    d.alpha = 0;
-    d.delay = (i * 137.5) % 900;
-  });
-  const tasks = {};
-  DATA.forEach(d => (tasks[d.task] ??= []).push(d));
-  Object.values(tasks).forEach(g => g.sort((a, b) => a.created - b.created));
-  const clusters = Object.entries(tasks).filter(([, g]) => g.length >= 3).map(([task, g]) => {
-    const cx = g.reduce((s, d) => s + d.x, 0) / g.length;
-    const cy = g.reduce((s, d) => s + d.y, 0) / g.length;
-    const cz = g.reduce((s, d) => s + d.z, 0) / g.length;
-    const spread = Math.max(.06, ...g.map(d => Math.hypot(d.x - cx, d.y - cy, d.z - cz)));
-    return { task, g, cx, cy, cz, spread };
-  });
 
-  document.getElementById('stats').innerHTML =
-    `${N} memories · ${new Set(DATA.map(d => d.team)).size} teams · ${agents.length} agents · ` +
-    `${Object.keys(tasks).length} tasks · core: <span class="core">${core.kind}</span>`;
+  function applyData() { // (re)computes everything derived from DATA — run at load and on refresh
+    N = DATA.length;
+    core.stars().set(DATA.flatMap(d => [d.x, d.y, d.z]));
 
-  // --- legend ----------------------------------------------------------------------------
-  const off = new Set();
-  const legend = document.getElementById('legend');
-  agents.sort((a, b) => DATA.filter(d => d.agent === b).length - DATA.filter(d => d.agent === a).length)
-    .forEach(a => {
-      const n = DATA.filter(d => d.agent === a).length;
-      const chip = document.createElement('button');
-      chip.className = 'chip'; chip.style.color = color[a];
-      chip.innerHTML = `<span class="dot" style="background:${color[a]}"></span>` +
-        `<span style="color:var(--ink)">${a}</span><span class="n">${n}</span>`;
-      chip.onclick = () => { chip.classList.toggle('off'); off.has(a) ? off.delete(a) : off.add(a); };
-      legend.appendChild(chip);
+    agents = [...new Set(DATA.map(d => d.agent))];
+    color = {}; let fi = 0;
+    agents.forEach(a => color[a] = PINNED[a] ?? FALLBACK[fi++ % FALLBACK.length]);
+    DATA.forEach((d, i) => {
+      d.i = i;
+      d.r = 2.4 + Math.min(3, d.text.length / 120) + (d.version - 1) * 1.2;
+      d.phase = (i * 2.399) % (Math.PI * 2);
+      d.dim = d.status !== 'active';
+      d.alpha = 0;
+      d.delay = (i * 137.5) % 900;
     });
+    tasks = {};
+    DATA.forEach(d => (tasks[d.task] ??= []).push(d));
+    Object.values(tasks).forEach(g => g.sort((a, b) => a.created - b.created));
+    clusters = Object.entries(tasks).filter(([, g]) => g.length >= 3).map(([task, g]) => {
+      const cx = g.reduce((s, d) => s + d.x, 0) / g.length;
+      const cy = g.reduce((s, d) => s + d.y, 0) / g.length;
+      const cz = g.reduce((s, d) => s + d.z, 0) / g.length;
+      const spread = Math.max(.06, ...g.map(d => Math.hypot(d.x - cx, d.y - cy, d.z - cz)));
+      return { task, g, cx, cy, cz, spread };
+    });
+
+    document.getElementById('stats').innerHTML =
+      `${N} memories · ${new Set(DATA.map(d => d.team)).size} teams · ${agents.length} agents · ` +
+      `${Object.keys(tasks).length} tasks · core: <span class="core">${core.kind}</span>`;
+
+    off = new Set();
+    legend.innerHTML = '';
+    agents.sort((a, b) => DATA.filter(d => d.agent === b).length - DATA.filter(d => d.agent === a).length)
+      .forEach(a => {
+        const n = DATA.filter(d => d.agent === a).length;
+        const chip = document.createElement('button');
+        chip.className = 'chip'; chip.style.color = color[a];
+        chip.innerHTML = `<span class="dot" style="background:${color[a]}"></span>` +
+          `<span style="color:var(--ink)">${a}</span><span class="n">${n}</span>`;
+        chip.onclick = () => { chip.classList.toggle('off'); off.has(a) ? off.delete(a) : off.add(a); };
+        legend.appendChild(chip);
+      });
+  }
+
+  applyData();
 
   // --- canvas ------------------------------------------------------------------------------
   const cv = document.getElementById('space'), cx = cv.getContext('2d');
