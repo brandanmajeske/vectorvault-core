@@ -116,6 +116,15 @@
   #drawer dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font: 12px var(--mono); margin: 0 0 14px; }
   #drawer dt { color: var(--ink-dim); } #drawer dd { margin: 0; overflow-wrap: anywhere; }
   #drawer .body { font-size: 13.5px; border-top: 1px solid var(--line); padding-top: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+  #drawer .results .card { padding:.6rem .7rem; margin:.4rem 0; border:1px solid #ffffff22;
+    border-radius:8px; cursor:pointer; }
+  #drawer .results .card:hover { border-color:var(--accent); }
+  #drawer .results .card.active { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent) inset; }
+  #drawer .results .card .meta { font-size:.72rem; opacity:.7; display:flex; justify-content:space-between; }
+  #drawer .results .card .sum { margin-top:.25rem; font-size:.85rem; }
+  #drawer .back { position:absolute; top:.6rem; left:.7rem; background:none; border:none;
+    color:var(--accent); cursor:pointer; font-size:.85rem; }
+  #drawer .empty { opacity:.7; font-size:.9rem; padding:.5rem 0; }
 </style>
 
 <canvas id="space" aria-label="3D map of shared memories: each star is one memory, positioned by semantic similarity"></canvas>
@@ -138,10 +147,16 @@
 <div id="tip" role="tooltip"></div>
 <aside id="drawer" aria-label="Memory detail">
   <button class="close" aria-label="Close">✕</button>
-  <h2>Memory</h2>
-  <div class="key"></div>
-  <dl></dl>
-  <div class="body"></div>
+  <button class="back" aria-label="Back to results" hidden>‹ Results</button>
+  <h2 class="dtitle">Memory</h2>
+  <!-- detail mode -->
+  <div class="detail">
+    <div class="key"></div>
+    <dl></dl>
+    <div class="body"></div>
+  </div>
+  <!-- list mode -->
+  <div class="results" role="listbox" aria-label="Search results" hidden></div>
 </aside>
 
 <script type="application/json" id="data">__DATA__</script>
@@ -321,14 +336,15 @@ const CORE_B64 = "__WASM__";
   }
 
   // --- state ---------------------------------------------------------------------------------
-  let hover = null, selected = null, query = '';
+  let hover = null, selected = null, query = '', semanticKeys = null;
   let camYawProxy = 0; // for bg parallax (accumulated from orbit input)
   const t0 = performance.now();
   const INTRO = reduced ? 0 : 1300;
   let lastInput = t0;
   const visible = d => !off.has(d.agent) &&
     (!query || (d.text + ' ' + d.task + ' ' + d.key).toLowerCase().includes(query));
-  const matches = d => query && (d.text + ' ' + d.task + ' ' + d.key).toLowerCase().includes(query);
+  const matches = d => (query && (d.text + ' ' + d.task + ' ' + d.key).toLowerCase().includes(query))
+    || (semanticKeys && semanticKeys.has(d.key));
 
   const meteors = [];
   let nextMeteor = t0 + 3000;
@@ -552,21 +568,141 @@ const CORE_B64 = "__WASM__";
 
   // --- drawer + search ---------------------------------------------------------------------------------
   const drawer = document.getElementById('drawer');
-  function openDrawer(d) {
+  const resultsEl = drawer.querySelector('.results');
+  const detailEl = drawer.querySelector('.detail');
+  const backBtn = drawer.querySelector('.back');
+  const dtitle = drawer.querySelector('.dtitle');
+  let lastResults = null;   // {q, cards} — remembered so the back arrow can restore the list
+  let hiIdx = -1;           // highlighted card index in list mode
+  let searchEnabled = true; // flipped off if /search answers 503 (static page)
+
+  const row = (k, v) => `<dt>${k}</dt><dd>${esc(String(v))}</dd>`;
+
+  function setMode(mode) { // 'detail' | 'list'
+    detailEl.hidden = mode !== 'detail';
+    resultsEl.hidden = mode !== 'list';
+  }
+
+  function openDrawer(d, fromList = false) {
+    dtitle.textContent = 'Memory';
     drawer.querySelector('.key').textContent = d.key;
     const when = d.created ? new Date(d.created * 1000).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : '—';
     drawer.querySelector('dl').innerHTML =
       row('agent', d.agent) + row('stored by', d.stored_by) + row('team', d.team) + row('task', d.task) +
       row('type', d.type) + row('status', d.status) + row('version', 'v' + d.version) + row('created', when);
-    drawer.querySelector('.body').textContent = d.full || d.text; // full memory, not the preview
+    drawer.querySelector('.body').textContent = d.full || d.text || d.content || '';
+    backBtn.hidden = !fromList;
+    setMode('detail');
     drawer.classList.add('open');
   }
-  const row = (k, v) => `<dt>${k}</dt><dd>${esc(String(v))}</dd>`;
-  const closeDrawer = () => drawer.classList.remove('open');
+
+  const closeDrawer = () => { drawer.classList.remove('open'); hiIdx = -1; };
+
+  function flyToKey(key) { // fly the camera to a star by key, if it's rendered
+    const p = DATA.find(d => d.key === key);
+    if (p) core.flyTo(p.x, p.y, p.z, 1.5);
+    return !!p;
+  }
+
+  function renderResults(q, cards) {
+    lastResults = { q, cards };
+    dtitle.textContent = `Results for "${q}" · ${cards.length}`;
+    backBtn.hidden = true;
+    if (!cards.length) {
+      resultsEl.innerHTML = `<div class="empty">No matches for "${esc(q)}".</div>`;
+    } else {
+      resultsEl.innerHTML = cards.map((c, i) => {
+        const dist = (c.distance || c.distance === 0) ? `${c.distance.toFixed(2)} dist` : '';
+        return `<div class="card" role="option" data-key="${esc(c.key)}" data-i="${i}">
+          <div class="meta"><span>${esc(c.type)} · ${esc(c.team)}</span><span>${dist}</span></div>
+          <div class="sum">${esc(c.summary || '')}</div>
+          <div class="meta"><span>agent: ${esc(c.agent)}</span></div></div>`;
+      }).join('');
+      resultsEl.querySelectorAll('.card').forEach(el => {
+        el.onclick = () => showDetailFromCard(el.dataset.key);
+      });
+    }
+    setMode('list');
+    drawer.classList.add('open');
+    hiIdx = cards.length ? 0 : -1;
+    highlight();
+    resultsEl.focus();
+    // highlight the matching stars + fly to the top hit
+    query = ''; // clear lexical filter so pulse reflects semantic hits only
+    semanticKeys = new Set(cards.map(c => c.key));
+    if (cards.length) flyToKey(cards[0].key);
+  }
+
+  function highlight() {
+    const cards = [...resultsEl.querySelectorAll('.card')];
+    cards.forEach((el, i) => el.classList.toggle('active', i === hiIdx));
+    if (hiIdx >= 0 && cards[hiIdx]) {
+      cards[hiIdx].scrollIntoView({ block: 'nearest' });
+      flyToKey(cards[hiIdx].dataset.key); // fly-on-highlight (QA gate: gate behind Enter if twitchy)
+    }
+  }
+
+  function moveHighlight(delta) {
+    const n = resultsEl.querySelectorAll('.card').length;
+    if (!n) return;
+    hiIdx = (hiIdx + delta + n) % n; // wrap
+    highlight();
+  }
+
+  async function showDetailFromCard(key) {
+    try {
+      const resp = await fetch('/memory?key=' + encodeURIComponent(key));
+      const rec = await resp.json();
+      if (!resp.ok) { drawer.querySelector('.body').textContent = rec.error || 'not found'; return; }
+      const shown = flyToKey(key);
+      openDrawer({
+        key: rec.key, agent: rec.agent_id, stored_by: rec.stored_by || '—',
+        team: rec.team_id, task: rec.task_id, type: rec.memory_type, status: rec.status,
+        version: rec.version, created: rec.created_at,
+        content: (rec.content || rec.content_summary || '') + (shown ? '' : '\n\n(not shown in this view)'),
+      }, /*fromList*/ true);
+    } catch (err) {
+      drawer.querySelector('.body').textContent = 'Fetch failed — see server log.';
+      setMode('detail'); drawer.classList.add('open');
+    }
+  }
+
+  async function runSemanticSearch(q) {
+    if (!searchEnabled || !q) return;
+    dtitle.textContent = 'searching…';
+    drawer.classList.add('open'); setMode('list');
+    resultsEl.innerHTML = '<div class="empty">searching…</div>';
+    try {
+      const resp = await fetch('/search?q=' + encodeURIComponent(q));
+      if (resp.status === 503) { searchEnabled = false; closeDrawer(); return; }
+      const cards = await resp.json();
+      if (!resp.ok) { resultsEl.innerHTML = `<div class="empty">Search failed — see server log.</div>`; return; }
+      renderResults(q, cards);
+    } catch (err) {
+      resultsEl.innerHTML = '<div class="empty">Search failed — see server log.</div>';
+    }
+  }
+
+  backBtn.onclick = () => { if (lastResults) renderResults(lastResults.q, lastResults.cards); };
   drawer.querySelector('.close').onclick = () => { selected = null; closeDrawer(); };
-  document.getElementById('search').addEventListener('input', e => {
-    query = e.target.value.trim().toLowerCase();
+
+  const searchBox = document.getElementById('search');
+  searchBox.addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); if (query) semanticKeys = null; });
+  searchBox.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); runSemanticSearch(searchBox.value.trim()); }
   });
+  // arrow-key navigation while the results list is focused/open
+  resultsEl.addEventListener('keydown', e => {
+    if (resultsEl.hidden) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); moveHighlight(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); moveHighlight(-1); }
+    else if (e.key === 'Enter') {
+      e.preventDefault(); e.stopPropagation();
+      const cards = resultsEl.querySelectorAll('.card');
+      if (hiIdx >= 0 && cards[hiIdx]) showDetailFromCard(cards[hiIdx].dataset.key);
+    }
+  });
+  resultsEl.tabIndex = 0; // focusable so it receives arrow keys
 
   function esc(s) { return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
