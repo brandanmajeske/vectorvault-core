@@ -193,6 +193,23 @@ def build_html(template: Path, points: list[dict], wasm_b64: str | None) -> str:
     return html
 
 
+def handle_refresh(refresh_fn) -> tuple[int, dict | list]:
+    """Route logic for GET /refresh — pure, socket-free (unit-testable).
+
+    ``refresh_fn`` is a zero-arg callable that recomputes the current point list
+    (same shape ``to_points`` produces). Any exception during recompute is caught
+    so a transient AWS/network hiccup never crashes the running server.
+    """
+    try:
+        points = refresh_fn()
+    except Exception as exc:
+        print(f"refresh failed: {exc}", file=sys.stderr)
+        return 500, {"error": "refresh failed — see server log"}
+    if not points:
+        return 503, {"error": "no memories in the shared index"}
+    return 200, points
+
+
 def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser: bool,
           backend=None) -> int:
     """Serve the generated pages over HTTP until Ctrl+C. ``/`` redirects to the newest

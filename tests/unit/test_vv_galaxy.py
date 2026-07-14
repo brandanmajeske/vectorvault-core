@@ -65,3 +65,24 @@ def test_build_html_requires_wasm_when_placeholder_present(tmp_path):
 def test_build_search_backend_none_for_ambient_role():
     # role == "none" => no scoped client to attribute reads => search disabled.
     assert vv_galaxy.build_search_backend("us-west-2", "none", active_only=False) is None
+
+
+def test_handle_refresh_returns_points_on_success():
+    points = [{"key": "k1", "x": 0.1, "y": 0.2, "z": 0.3}]
+    status, body = vv_galaxy.handle_refresh(lambda: points)
+    assert status == 200
+    assert body == points
+
+
+def test_handle_refresh_503_on_empty():
+    status, body = vv_galaxy.handle_refresh(lambda: [])
+    assert status == 503
+    assert "error" in body
+
+
+def test_handle_refresh_500_on_exception():
+    def boom():
+        raise RuntimeError("aws exploded")
+    status, body = vv_galaxy.handle_refresh(boom)
+    assert status == 500
+    assert "error" in body
