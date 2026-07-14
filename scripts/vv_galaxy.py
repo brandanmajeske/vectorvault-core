@@ -211,7 +211,7 @@ def handle_refresh(refresh_fn) -> tuple[int, dict | list]:
 
 
 def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser: bool,
-          backend=None) -> int:
+          backend=None, refresh_fn=None) -> int:
     """Serve the generated pages over HTTP until Ctrl+C. ``/`` redirects to the newest
     page (the 3D galaxy when both were generated — it's written last)."""
     import http.server
@@ -239,6 +239,12 @@ def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser
             if parsed.path == "/memory":
                 key = urllib.parse.parse_qs(parsed.query).get("key", [None])[0]
                 self._send_json(*galaxy_search.handle_get(backend, key))
+                return
+            if parsed.path == "/refresh":
+                if refresh_fn is None:
+                    self._send_json(503, {"error": "refresh is disabled on this page"})
+                else:
+                    self._send_json(*handle_refresh(refresh_fn))
                 return
             if self.path in ("/", "/index.html"):
                 self.send_response(302)
@@ -324,6 +330,13 @@ def main(argv: list[str] | None = None) -> int:
     if not vectors:
         print("the shared index is empty — nothing to plot", file=sys.stderr)
         return 1
+
+    def refresh_fn():
+        vecs = fetch_vectors(args.region, args.role)
+        if args.active:
+            vecs = active_only(vecs)
+        return to_points(vecs, 3)
+
     teams: dict[str, int] = {}
     for v in vectors:
         t = (v.get("metadata") or {}).get("team_id", "?")
@@ -353,8 +366,9 @@ def main(argv: list[str] | None = None) -> int:
             webbrowser.open(written[-1].as_uri())  # old behavior: open the file directly
         return 0
     backend = None if args.no_search else build_search_backend(args.region, args.role, args.active)
+    refresh = refresh_fn if args.mode in ("3d", "both") else None
     return serve(out_dir, written, args.port, args.bind,
-                 open_browser=not args.no_open, backend=backend)
+                 open_browser=not args.no_open, backend=backend, refresh_fn=refresh)
 
 
 if __name__ == "__main__":
