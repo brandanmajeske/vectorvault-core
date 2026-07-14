@@ -51,6 +51,23 @@
   #tour.on { color: var(--ink); background: rgba(142,162,255,.18); }
   #tour:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+  #refresh {
+    background: var(--panel); color: var(--accent); border: 1px solid var(--line);
+    border-radius: 999px; width: 30px; height: 30px; font-size: 15px; cursor: pointer;
+    transition: border-color .2s, box-shadow .2s, color .2s;
+    display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  }
+  #refresh:hover { border-color: var(--accent); box-shadow: 0 0 12px rgba(142,162,255,.35); }
+  #refresh:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #refresh:disabled { cursor: default; opacity: .6; }
+  #refresh .icon { display: inline-block; }
+  #refresh.spin .icon { animation: refresh-spin .8s linear infinite; will-change: transform; }
+  #refresh.error { color: #ff6b6b; border-color: #ff6b6b; }
+  @keyframes refresh-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    #refresh.spin .icon { animation: none; }
+  }
+
   #legend {
     position: fixed; left: 14px; bottom: 14px; z-index: 5;
     display: flex; flex-direction: column; gap: 6px; max-width: 46vw;
@@ -112,10 +129,20 @@
   }
   #drawer .close:hover { color: var(--ink); border-color: var(--accent); }
   #drawer h2 { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-dim); margin: 4px 0 10px; }
+  #drawer .back:not([hidden]) + h2 { margin-top: 24px; }
   #drawer .key { font: 12px var(--mono); color: var(--accent); word-break: break-all; margin-bottom: 12px; }
   #drawer dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font: 12px var(--mono); margin: 0 0 14px; }
   #drawer dt { color: var(--ink-dim); } #drawer dd { margin: 0; overflow-wrap: anywhere; }
   #drawer .body { font-size: 13.5px; border-top: 1px solid var(--line); padding-top: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+  #drawer .results .card { padding:.6rem .7rem; margin:.4rem 0; border:1px solid #ffffff22;
+    border-radius:8px; cursor:pointer; }
+  #drawer .results .card:hover { border-color:var(--accent); }
+  #drawer .results .card.active { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent) inset; }
+  #drawer .results .card .meta { font-size:.72rem; opacity:.7; display:flex; justify-content:space-between; }
+  #drawer .results .card .sum { margin-top:.25rem; font-size:.85rem; }
+  #drawer .back { position:absolute; top:20px; left:20px; background:none; border:none; padding:2px 0;
+    color:var(--accent); cursor:pointer; font-size:.85rem; }
+  #drawer .empty { opacity:.7; font-size:.9rem; padding:.5rem 0; }
 </style>
 
 <canvas id="space" aria-label="3D map of shared memories: each star is one memory, positioned by semantic similarity"></canvas>
@@ -125,6 +152,7 @@
   <div id="stats"></div>
   <div id="controls">
     <button id="tour" aria-pressed="false">✦ tour</button>
+    <button id="refresh" aria-label="Refresh galaxy from the vault" title="Refresh from vault"><span class="icon">↻</span></button>
     <input id="search" type="search" placeholder="search memories…" aria-label="Search memories">
   </div>
 </header>
@@ -138,10 +166,16 @@
 <div id="tip" role="tooltip"></div>
 <aside id="drawer" aria-label="Memory detail">
   <button class="close" aria-label="Close">✕</button>
-  <h2>Memory</h2>
-  <div class="key"></div>
-  <dl></dl>
-  <div class="body"></div>
+  <button class="back" aria-label="Back to results" hidden>‹ Results</button>
+  <h2 class="dtitle">Memory</h2>
+  <!-- detail mode -->
+  <div class="detail">
+    <div class="key"></div>
+    <dl></dl>
+    <div class="body"></div>
+  </div>
+  <!-- list mode -->
+  <div class="results" role="listbox" aria-label="Search results" hidden></div>
 </aside>
 
 <script type="application/json" id="data">__DATA__</script>
@@ -149,8 +183,8 @@
 const CORE_B64 = "__WASM__";
 
 (async () => {
-  const DATA = JSON.parse(document.getElementById('data').textContent);
-  const N = DATA.length;
+  let DATA = JSON.parse(document.getElementById('data').textContent);
+  let N = DATA.length;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // --- core: Rust/WASM camera + projection; identical JS math as fallback ------------
@@ -159,11 +193,18 @@ const CORE_B64 = "__WASM__";
       const bytes = Uint8Array.from(atob(CORE_B64), c => c.charCodeAt(0));
       const { instance } = await WebAssembly.instantiate(bytes, {});
       const e = instance.exports;
-      const ptr = e.init(N);
+      let curN = -1, ptr = 0;
+      function resize(newN) { // re-init(): reallocates STARS/OUT in wasm memory, may relocate ptr
+        if (newN === curN) return;
+        ptr = e.init(newN);
+        curN = newN;
+      }
+      resize(N);
       return {
         kind: 'rust-wasm ⚙',
-        stars: () => new Float32Array(e.memory.buffer, ptr, N * 3),
-        out: () => new Float32Array(e.memory.buffer, e.out_ptr(), N * 5),
+        resize,
+        stars: () => new Float32Array(e.memory.buffer, ptr, curN * 3),
+        out: () => new Float32Array(e.memory.buffer, e.out_ptr(), curN * 5),
         orbit: (a, b) => e.orbit(a, b), flick: (a, b) => e.flick(a, b),
         pan: (a, b) => e.pan(a, b),
         dolly: f => e.dolly(f), keys: (m, dt) => e.keys(m, dt),
@@ -181,10 +222,16 @@ const CORE_B64 = "__WASM__";
     const LIM = 1.45;
     const c = { yaw: .7, pitch: .32, dist: 9, tdist: 3.1, tx: 0, ty: 0, tz: 0,
                 ttx: 0, tty: 0, ttz: 0, yv: 0, pv: 0, spin: 0, fpx: 800 };
-    const stars = new Float32Array(N * 3), out = new Float32Array(N * 5);
+    let stars = new Float32Array(N * 3), out = new Float32Array(N * 5), curN = N;
     const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+    function resize(newN) { // reallocate fixed-size buffers when the star count changes
+      if (newN === curN) return;
+      stars = new Float32Array(newN * 3);
+      out = new Float32Array(newN * 5);
+      curN = newN;
+    }
     const api = {
-      kind: 'js fallback', stars: () => stars, out: () => out,
+      kind: 'js fallback', resize, stars: () => stars, out: () => out,
       orbit(dx, dy) { // direct 1:1 drive while dragging (matches Rust core)
         const G = .0024;
         c.yaw += dx * G;
@@ -249,51 +296,60 @@ const CORE_B64 = "__WASM__";
   }
 
   const core = await makeCore();
-  core.stars().set(DATA.flatMap(d => [d.x, d.y, d.z]));
+  let agents, color, tasks, clusters;
+  let off = new Set();
+  const legend = document.getElementById('legend');
 
-  // --- palette + derived ---------------------------------------------------------------
   const PINNED = { 'ingest-bot': '#ffb45e', 'gemma-local': '#4de8c2', 'grok-cli': '#ff5470',
                    'grok-explore': '#e06bff', 'claude-code': '#7aa2ff' };
   const FALLBACK = ['#9dff8e', '#ffd166', '#6ee7ff', '#ff9ecb', '#c3b0ff'];
-  const agents = [...new Set(DATA.map(d => d.agent))];
-  const color = {}; let fi = 0;
-  agents.forEach(a => color[a] = PINNED[a] ?? FALLBACK[fi++ % FALLBACK.length]);
-  DATA.forEach((d, i) => {
-    d.i = i;
-    d.r = 2.4 + Math.min(3, d.text.length / 120) + (d.version - 1) * 1.2;
-    d.phase = (i * 2.399) % (Math.PI * 2);
-    d.dim = d.status !== 'active';
-    d.alpha = 0;
-    d.delay = (i * 137.5) % 900;
-  });
-  const tasks = {};
-  DATA.forEach(d => (tasks[d.task] ??= []).push(d));
-  Object.values(tasks).forEach(g => g.sort((a, b) => a.created - b.created));
-  const clusters = Object.entries(tasks).filter(([, g]) => g.length >= 3).map(([task, g]) => {
-    const cx = g.reduce((s, d) => s + d.x, 0) / g.length;
-    const cy = g.reduce((s, d) => s + d.y, 0) / g.length;
-    const cz = g.reduce((s, d) => s + d.z, 0) / g.length;
-    const spread = Math.max(.06, ...g.map(d => Math.hypot(d.x - cx, d.y - cy, d.z - cz)));
-    return { task, g, cx, cy, cz, spread };
-  });
 
-  document.getElementById('stats').innerHTML =
-    `${N} memories · ${new Set(DATA.map(d => d.team)).size} teams · ${agents.length} agents · ` +
-    `${Object.keys(tasks).length} tasks · core: <span class="core">${core.kind}</span>`;
+  function applyData() { // (re)computes everything derived from DATA — run at load and on refresh
+    N = DATA.length;
+    core.resize(N); // no-op if N is unchanged from the core's current allocation
+    core.stars().set(DATA.flatMap(d => [d.x, d.y, d.z]));
 
-  // --- legend ----------------------------------------------------------------------------
-  const off = new Set();
-  const legend = document.getElementById('legend');
-  agents.sort((a, b) => DATA.filter(d => d.agent === b).length - DATA.filter(d => d.agent === a).length)
-    .forEach(a => {
-      const n = DATA.filter(d => d.agent === a).length;
-      const chip = document.createElement('button');
-      chip.className = 'chip'; chip.style.color = color[a];
-      chip.innerHTML = `<span class="dot" style="background:${color[a]}"></span>` +
-        `<span style="color:var(--ink)">${a}</span><span class="n">${n}</span>`;
-      chip.onclick = () => { chip.classList.toggle('off'); off.has(a) ? off.delete(a) : off.add(a); };
-      legend.appendChild(chip);
+    agents = [...new Set(DATA.map(d => d.agent))];
+    color = {}; let fi = 0;
+    agents.forEach(a => color[a] = PINNED[a] ?? FALLBACK[fi++ % FALLBACK.length]);
+    DATA.forEach((d, i) => {
+      d.i = i;
+      d.r = 2.4 + Math.min(3, d.text.length / 120) + (d.version - 1) * 1.2;
+      d.phase = (i * 2.399) % (Math.PI * 2);
+      d.dim = d.status !== 'active';
+      d.alpha = 0;
+      d.delay = (i * 137.5) % 900;
     });
+    tasks = {};
+    DATA.forEach(d => (tasks[d.task] ??= []).push(d));
+    Object.values(tasks).forEach(g => g.sort((a, b) => a.created - b.created));
+    clusters = Object.entries(tasks).filter(([, g]) => g.length >= 3).map(([task, g]) => {
+      const cx = g.reduce((s, d) => s + d.x, 0) / g.length;
+      const cy = g.reduce((s, d) => s + d.y, 0) / g.length;
+      const cz = g.reduce((s, d) => s + d.z, 0) / g.length;
+      const spread = Math.max(.06, ...g.map(d => Math.hypot(d.x - cx, d.y - cy, d.z - cz)));
+      return { task, g, cx, cy, cz, spread };
+    });
+
+    document.getElementById('stats').innerHTML =
+      `${N} memories · ${new Set(DATA.map(d => d.team)).size} teams · ${agents.length} agents · ` +
+      `${Object.keys(tasks).length} tasks · core: <span class="core">${core.kind}</span>`;
+
+    off = new Set();
+    legend.innerHTML = '';
+    agents.sort((a, b) => DATA.filter(d => d.agent === b).length - DATA.filter(d => d.agent === a).length)
+      .forEach(a => {
+        const n = DATA.filter(d => d.agent === a).length;
+        const chip = document.createElement('button');
+        chip.className = 'chip'; chip.style.color = color[a];
+        chip.innerHTML = `<span class="dot" style="background:${color[a]}"></span>` +
+          `<span style="color:var(--ink)">${a}</span><span class="n">${n}</span>`;
+        chip.onclick = () => { chip.classList.toggle('off'); off.has(a) ? off.delete(a) : off.add(a); };
+        legend.appendChild(chip);
+      });
+  }
+
+  applyData();
 
   // --- canvas ------------------------------------------------------------------------------
   const cv = document.getElementById('space'), cx = cv.getContext('2d');
@@ -321,14 +377,15 @@ const CORE_B64 = "__WASM__";
   }
 
   // --- state ---------------------------------------------------------------------------------
-  let hover = null, selected = null, query = '';
+  let hover = null, selected = null, query = '', semanticKeys = null;
   let camYawProxy = 0; // for bg parallax (accumulated from orbit input)
   const t0 = performance.now();
   const INTRO = reduced ? 0 : 1300;
   let lastInput = t0;
   const visible = d => !off.has(d.agent) &&
     (!query || (d.text + ' ' + d.task + ' ' + d.key).toLowerCase().includes(query));
-  const matches = d => query && (d.text + ' ' + d.task + ' ' + d.key).toLowerCase().includes(query);
+  const matches = d => (query && (d.text + ' ' + d.task + ' ' + d.key).toLowerCase().includes(query))
+    || (semanticKeys && semanticKeys.has(d.key));
 
   const meteors = [];
   let nextMeteor = t0 + 3000;
@@ -550,23 +607,171 @@ const CORE_B64 = "__WASM__";
   }
   tourBtn.onclick = () => tourTimer ? stopTour() : startTour();
 
+  // --- refresh -----------------------------------------------------------------------------------
+  const refreshBtn = document.getElementById('refresh');
+  refreshBtn.onclick = async () => {
+    refreshBtn.disabled = true;
+    refreshBtn.classList.remove('error');
+    refreshBtn.classList.add('spin');
+    try {
+      const resp = await fetch('/refresh');
+      const body = await resp.json();
+      if (!resp.ok) throw new Error(body.error || 'refresh failed');
+      DATA = body;
+      applyData();
+    } catch (err) {
+      refreshBtn.classList.add('error');
+      refreshBtn.title = 'refresh failed — try again';
+      setTimeout(() => {
+        refreshBtn.classList.remove('error');
+        refreshBtn.title = 'Refresh from vault';
+      }, 2000);
+    } finally {
+      refreshBtn.classList.remove('spin');
+      refreshBtn.disabled = false;
+    }
+  };
+
   // --- drawer + search ---------------------------------------------------------------------------------
   const drawer = document.getElementById('drawer');
-  function openDrawer(d) {
+  const resultsEl = drawer.querySelector('.results');
+  const detailEl = drawer.querySelector('.detail');
+  const backBtn = drawer.querySelector('.back');
+  const dtitle = drawer.querySelector('.dtitle');
+  let lastResults = null;   // {q, cards} — remembered so the back arrow can restore the list
+  let hiIdx = -1;           // highlighted card index in list mode
+  let searchEnabled = true; // flipped off if /search answers 503 (static page)
+
+  const row = (k, v) => `<dt>${k}</dt><dd>${esc(String(v))}</dd>`;
+
+  function setMode(mode) { // 'detail' | 'list'
+    detailEl.hidden = mode !== 'detail';
+    resultsEl.hidden = mode !== 'list';
+  }
+
+  function openDrawer(d, fromList = false) {
+    dtitle.textContent = 'Memory';
     drawer.querySelector('.key').textContent = d.key;
     const when = d.created ? new Date(d.created * 1000).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : '—';
     drawer.querySelector('dl').innerHTML =
       row('agent', d.agent) + row('stored by', d.stored_by) + row('team', d.team) + row('task', d.task) +
       row('type', d.type) + row('status', d.status) + row('version', 'v' + d.version) + row('created', when);
-    drawer.querySelector('.body').textContent = d.full || d.text; // full memory, not the preview
+    drawer.querySelector('.body').textContent = d.full || d.text || d.content || '';
+    backBtn.hidden = !fromList;
+    setMode('detail');
     drawer.classList.add('open');
   }
-  const row = (k, v) => `<dt>${k}</dt><dd>${esc(String(v))}</dd>`;
-  const closeDrawer = () => drawer.classList.remove('open');
+
+  const closeDrawer = () => { drawer.classList.remove('open'); hiIdx = -1; };
+
+  function flyToKey(key) { // fly the camera to a star by key, if it's rendered
+    const p = DATA.find(d => d.key === key);
+    if (p) core.flyTo(p.x, p.y, p.z, 1.5);
+    return !!p;
+  }
+
+  function renderResults(q, cards) {
+    lastResults = { q, cards };
+    dtitle.textContent = `Results for "${q}" · ${cards.length}`;
+    backBtn.hidden = true;
+    if (!cards.length) {
+      resultsEl.innerHTML = `<div class="empty">No matches for "${esc(q)}".</div>`;
+    } else {
+      resultsEl.innerHTML = cards.map((c, i) => {
+        const dist = (c.distance || c.distance === 0) ? `${c.distance.toFixed(2)} dist` : '';
+        return `<div class="card" role="option" data-key="${esc(c.key)}" data-i="${i}">
+          <div class="meta"><span>${esc(c.type)} · ${esc(c.team)}</span><span>${dist}</span></div>
+          <div class="sum">${esc(c.summary || '')}</div>
+          <div class="meta"><span>agent: ${esc(c.agent)}</span></div></div>`;
+      }).join('');
+      resultsEl.querySelectorAll('.card').forEach(el => {
+        el.onclick = () => showDetailFromCard(el.dataset.key);
+      });
+    }
+    setMode('list');
+    drawer.classList.add('open');
+    hiIdx = cards.length ? 0 : -1;
+    highlight();
+    resultsEl.focus();
+    // highlight the matching stars + fly to the top hit
+    query = ''; // clear lexical filter so pulse reflects semantic hits only
+    semanticKeys = new Set(cards.map(c => c.key));
+    if (cards.length) flyToKey(cards[0].key);
+  }
+
+  function highlight() {
+    const cards = [...resultsEl.querySelectorAll('.card')];
+    cards.forEach((el, i) => el.classList.toggle('active', i === hiIdx));
+    if (hiIdx >= 0 && cards[hiIdx]) {
+      cards[hiIdx].scrollIntoView({ block: 'nearest' });
+      flyToKey(cards[hiIdx].dataset.key); // fly-on-highlight (QA gate: gate behind Enter if twitchy)
+    }
+  }
+
+  function moveHighlight(delta) {
+    const n = resultsEl.querySelectorAll('.card').length;
+    if (!n) return;
+    hiIdx = (hiIdx + delta + n) % n; // wrap
+    highlight();
+  }
+
+  async function showDetailFromCard(key) {
+    try {
+      const resp = await fetch('/memory?key=' + encodeURIComponent(key));
+      const rec = await resp.json();
+      if (!resp.ok) {
+        drawer.querySelector('.body').textContent = rec.error || 'not found';
+        setMode('detail'); drawer.classList.add('open'); return;
+      }
+      const shown = flyToKey(key);
+      openDrawer({
+        key: rec.key, agent: rec.agent_id, stored_by: rec.stored_by || '—',
+        team: rec.team_id, task: rec.task_id, type: rec.memory_type, status: rec.status,
+        version: rec.version, created: rec.created_at,
+        content: (rec.content || rec.content_summary || '') + (shown ? '' : '\n\n(not shown in this view)'),
+      }, /*fromList*/ true);
+    } catch (err) {
+      drawer.querySelector('.body').textContent = 'Fetch failed — see server log.';
+      setMode('detail'); drawer.classList.add('open');
+    }
+  }
+
+  async function runSemanticSearch(q) {
+    if (!searchEnabled || !q) return;
+    dtitle.textContent = 'searching…';
+    drawer.classList.add('open'); setMode('list');
+    resultsEl.innerHTML = '<div class="empty">searching…</div>';
+    try {
+      const resp = await fetch('/search?q=' + encodeURIComponent(q));
+      if (resp.status === 503) { searchEnabled = false; closeDrawer(); return; }
+      const cards = await resp.json();
+      if (!resp.ok) { resultsEl.innerHTML = `<div class="empty">Search failed — see server log.</div>`; return; }
+      renderResults(q, cards);
+    } catch (err) {
+      resultsEl.innerHTML = '<div class="empty">Search failed — see server log.</div>';
+    }
+  }
+
+  backBtn.onclick = () => { if (lastResults) renderResults(lastResults.q, lastResults.cards); };
   drawer.querySelector('.close').onclick = () => { selected = null; closeDrawer(); };
-  document.getElementById('search').addEventListener('input', e => {
-    query = e.target.value.trim().toLowerCase();
+
+  const searchBox = document.getElementById('search');
+  searchBox.addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); if (query) semanticKeys = null; });
+  searchBox.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); runSemanticSearch(searchBox.value.trim()); }
   });
+  // arrow-key navigation while the results list is focused/open
+  resultsEl.addEventListener('keydown', e => {
+    if (resultsEl.hidden) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); moveHighlight(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); moveHighlight(-1); }
+    else if (e.key === 'Enter') {
+      e.preventDefault(); e.stopPropagation();
+      const cards = resultsEl.querySelectorAll('.card');
+      if (hiIdx >= 0 && cards[hiIdx]) showDetailFromCard(cards[hiIdx].dataset.key);
+    }
+  });
+  resultsEl.tabIndex = 0; // focusable so it receives arrow keys
 
   function esc(s) { return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
