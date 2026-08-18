@@ -448,6 +448,17 @@ class MemoryClient:
 
         collapsed = [v[1] for v in best.values()]
         collapsed = self._promote_chunks_to_parents(index, collapsed)
+
+        # Attach usage (ephemeral, in-memory only) so rank_hits can consume it (Task 4).
+        # Best-effort — self._canonical.get_usage never raises.
+        usage = self._canonical.get_usage(
+            [h.metadata.get("canonical_id") or h.key for h in collapsed]
+        )
+        for h in collapsed:
+            uc, lu = usage.get(h.metadata.get("canonical_id") or h.key, (0, 0))
+            h.metadata["use_count"] = uc
+            h.metadata["last_used_at"] = lu
+
         if enable_rerank:
             self._metrics.count("RerankInvocations")
             ranked = rerank_hits(

@@ -510,6 +510,59 @@ def test_apply_hydrate_keys_records_use(client, fakes):
     spy.assert_called_once_with("dec:2", FIXED_NOW)
 
 
+# --- retrieve: usage attached to hits before ranking (Task 3) ------------------
+
+
+def test_retrieve_attaches_usage_to_hits_before_ranking(client, fakes, monkeypatch):
+    fakes["s3v"].query_hits = [
+        _hit("k", canonical_id="dec:1", distance=0.1, content_summary="decision X"),
+    ]
+    client._canonical.get_usage = MagicMock(return_value={"dec:1": (5, 900)})
+    client._canonical.record_use = MagicMock()
+
+    captured: list = []
+    import vectorvault.memory_client as memory_client_module
+
+    real_rank_hits = memory_client_module.rank_hits
+
+    def spy_rank_hits(hits, *args, **kwargs):
+        captured.extend(hits)
+        return real_rank_hits(hits, *args, **kwargs)
+
+    monkeypatch.setattr(memory_client_module, "rank_hits", spy_rank_hits)
+
+    client.retrieve_memory("decision")
+
+    assert len(captured) == 1
+    assert captured[0].metadata["use_count"] == 5
+    assert captured[0].metadata["last_used_at"] == 900
+
+
+def test_retrieve_defaults_usage_to_zero_when_absent(client, fakes, monkeypatch):
+    fakes["s3v"].query_hits = [
+        _hit("k", canonical_id="dec:1", distance=0.1, content_summary="decision X"),
+    ]
+    client._canonical.record_use = MagicMock()
+    # get_usage returns {} by default (no seeded usage rows).
+
+    captured: list = []
+    import vectorvault.memory_client as memory_client_module
+
+    real_rank_hits = memory_client_module.rank_hits
+
+    def spy_rank_hits(hits, *args, **kwargs):
+        captured.extend(hits)
+        return real_rank_hits(hits, *args, **kwargs)
+
+    monkeypatch.setattr(memory_client_module, "rank_hits", spy_rank_hits)
+
+    client.retrieve_memory("decision")
+
+    assert len(captured) == 1
+    assert captured[0].metadata["use_count"] == 0
+    assert captured[0].metadata["last_used_at"] == 0
+
+
 # --- retrieve: rank_mode (V-45) ------------------------------------------------
 
 
