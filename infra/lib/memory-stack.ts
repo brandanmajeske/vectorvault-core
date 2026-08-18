@@ -92,9 +92,7 @@ export class MemoryStack extends cdk.Stack {
       trustConditions,
     );
 
-    const alertEmail: string = this.node.tryGetContext('alertEmail') ?? 'alerts@example.com'; // REPLACE: -c alertEmail=you@company.com
-    // Monthly hard cost cap in USD (design-doc §6). Tune per deployment: -c budgetUsd=250
-    const budgetUsd: number = Number(this.node.tryGetContext('budgetUsd') ?? 20);
+    const alertEmail: string = this.node.tryGetContext('alertEmail') ?? 'bmarkmajeske+awsbrake@outlook.com';
 
     const partition = cdk.Aws.PARTITION;
     const region = cdk.Aws.REGION;
@@ -229,6 +227,7 @@ export class MemoryStack extends cdk.Stack {
     // so CloudTrail attributes each call (design-doc §5; client-set at assume time).
     // =========================================================================
     const titanModelArn = `arn:${partition}:bedrock:${region}::foundation-model/${EMBED_MODEL_ID}`;
+    const rerankModelArn = `arn:${partition}:bedrock:${region}::foundation-model/cohere.rerank-v3-5:0`;
 
     const vectorActions = (actions: string[], indexes: s3vectors.CfnIndex[]) =>
       new iam.PolicyStatement({
@@ -241,6 +240,13 @@ export class MemoryStack extends cdk.Stack {
         sid: 'BedrockTitanEmbed',
         actions: ['bedrock:InvokeModel'],
         resources: [titanModelArn],
+      });
+
+    const bedrockRerank = () =>
+      new iam.PolicyStatement({
+        sid: 'BedrockCohereRerank',
+        actions: ['bedrock:Rerank'],
+        resources: [rerankModelArn],
       });
 
     // Optional client-side metrics (design-doc §7): agents built with
@@ -266,6 +272,18 @@ export class MemoryStack extends cdk.Stack {
     const RO_VECTORS = ['s3vectors:QueryVectors', 's3vectors:GetVectors', 's3vectors:ListVectors'];
     const TTL_VECTORS = ['s3vectors:DeleteVectors', 's3vectors:ListVectors', 's3vectors:GetVectors', 's3vectors:PutVectors'];
 
+    // Long-lived local credential for the read-only Memory Galaxy daemon. The
+    // user has no direct data-plane access: its sole permission, added after the
+    // auditor role is declared, is to assume that role with an attributed session.
+    const galaxyDaemonUser = new iam.User(this, 'GalaxyDaemonUser', {
+      userName: 'GalaxyDaemonUser',
+    });
+
+    const galaxyDaemonPrincipal = new iam.PrincipalWithConditions(
+      new iam.ArnPrincipal(galaxyDaemonUser.userArn),
+      { StringEquals: { 'sts:RoleSessionName': 'galaxy-daemon' } },
+    );
+
     // --- Planner: shared-team-memory + private-planner (read/write) ----------
     const plannerRole = new iam.Role(this, 'MemoryPlannerRole', {
       roleName: 'MemoryPlannerRole',
@@ -275,6 +293,7 @@ export class MemoryStack extends cdk.Stack {
     plannerRole.addToPolicy(vectorActions(RW_VECTORS, [sharedIndex, plannerIndex]));
     plannerRole.addToPolicy(contentReadWrite([INDEX_NAMES.shared, INDEX_NAMES.planner]));
     plannerRole.addToPolicy(bedrockEmbed());
+    plannerRole.addToPolicy(bedrockRerank());
     plannerRole.addToPolicy(clientMetrics());
     embedCacheTable.grantReadWriteData(plannerRole);
     memoryIndexTable.grantReadWriteData(plannerRole);
@@ -290,6 +309,7 @@ export class MemoryStack extends cdk.Stack {
     researcherRole.addToPolicy(vectorActions(RW_VECTORS, [sharedIndex, researcherIndex]));
     researcherRole.addToPolicy(contentReadWrite([INDEX_NAMES.shared, INDEX_NAMES.researcher]));
     researcherRole.addToPolicy(bedrockEmbed());
+    researcherRole.addToPolicy(bedrockRerank());
     researcherRole.addToPolicy(clientMetrics());
     embedCacheTable.grantReadWriteData(researcherRole);
     memoryIndexTable.grantReadWriteData(researcherRole);
@@ -301,7 +321,7 @@ export class MemoryStack extends cdk.Stack {
     // boundaries). Still needs Bedrock embed to build query vectors for QueryVectors.
     const auditorRole = new iam.Role(this, 'MemoryAuditorRole', {
       roleName: 'MemoryAuditorRole',
-      assumedBy: trustPrincipal,
+      assumedBy: new iam.CompositePrincipal(trustPrincipal, galaxyDaemonPrincipal),
       description: 'Auditor - read-only across shared + all private indexes',
     });
     auditorRole.addToPolicy(vectorActions(RO_VECTORS, [sharedIndex, plannerIndex, researcherIndex]));
@@ -315,6 +335,22 @@ export class MemoryStack extends cdk.Stack {
     auditorRole.addToPolicy(bedrockEmbed());
     memoryIndexTable.grantReadData(auditorRole); // list_memories lookups; no embed cache
     key.grantDecrypt(auditorRole); // read externalized content
+    const configParameterArn = `arn:${partition}:ssm:${region}:${account}:parameter/vectorvault`;
+    auditorRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'ReadVectorVaultConfig',
+        actions: ['ssm:GetParameter', 'ssm:GetParametersByPath'],
+        resources: [configParameterArn, `${configParameterArn}/*`],
+      }),
+    );
+
+    galaxyDaemonUser.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'AssumeMemoryAuditorRole',
+        actions: ['sts:AssumeRole'],
+        resources: [auditorRole.roleArn],
+      }),
+    );
 
     // --- TTL worker (PR 3): lifecycle transitions on all indexes -------------
     // Most destructive role in the system (DeleteVectors) — safety rails live in
@@ -478,8 +514,8 @@ export class MemoryStack extends cdk.Stack {
 
     // =========================================================================
     // AWS Budget — $20/month hard cap; alarm at 80% ($16). Owner constraint
-    // (design-doc §1/§6). ACCOUNT-WIDE by decision
-    // (owner, 2026-07-08): account <AWS_ACCOUNT_ID> also hosts llm-forge et al., but
+    // (design-doc §1/§6; brandan-cost-sensitivity). ACCOUNT-WIDE by decision
+    // (owner, 2026-07-08): account 904233124492 also hosts llm-forge et al., but
     // those are paused, so total account spend == VectorVault spend for now. If
     // other projects resume, scope this to VectorVault by adding a costFilters on
     // the `project: vectorvault` cost-allocation tag (all resources are tagged;
@@ -491,10 +527,10 @@ export class MemoryStack extends cdk.Stack {
         // alert email) forces CloudFormation to REPLACE the budget, and a fixed
         // name collides with the not-yet-deleted old budget. An auto-generated
         // name lets notification changes deploy cleanly. (Nothing references the
-        // name; the budget cap + tags identify it.)
+        // name; the $20 cap + tags identify it.)
         budgetType: 'COST',
         timeUnit: 'MONTHLY',
-        budgetLimit: { amount: budgetUsd, unit: 'USD' },
+        budgetLimit: { amount: 20, unit: 'USD' },
       },
       // Each notification targets BOTH a direct EMAIL subscriber and the SNS topic.
       // The direct EMAIL is the reliable primary alert: unlike an SNS email

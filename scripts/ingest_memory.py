@@ -9,10 +9,10 @@ chunk hashes to the same key and returns ``unchanged``; ``mode="new"`` ensures
 distinct-but-similar chunks all land instead of tripping near-duplicate dedup.
 
     # preview (no writes):
-    ingest_memory.py ~/.claude/projects/-home-…-acme/memory --team acme --dry-run
+    ingest_memory.py ~/.claude/projects/-home-…-unirgb/memory --team unirgb --dry-run
     # for real, attributed to the planner role:
     AWS_PROFILE=<your-profile> .venv/bin/python scripts/ingest_memory.py <dir> \
-        --team acme --role planner --agent-id ingest-bot
+        --team unirgb --role planner --agent-id ingest-bot
 
 Keyless — AWS credentials only (embeddings run on Bedrock via IAM).
 """
@@ -26,7 +26,7 @@ from pathlib import Path
 import boto3
 
 from vectorvault import Config, MemoryClient
-from vectorvault.ingest import file_to_chunks
+from vectorvault.ingest import file_to_chunks, first_paragraph_summary
 from vectorvault.tools import memory_client_for_agent
 
 
@@ -53,6 +53,8 @@ def build_plan(args: argparse.Namespace, files: list[Path]) -> list[tuple[str, s
         task_id = args.task_id or f.stem
         for c in chunks:
             summary = c.heading if c.is_section else desc
+            if not summary:
+                summary = first_paragraph_summary(c.content)
             plan.append((task_id, str(f), summary, c.content))
     return plan
 

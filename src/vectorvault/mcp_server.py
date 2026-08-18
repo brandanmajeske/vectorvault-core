@@ -1,6 +1,6 @@
 """VectorVault MCP server — exposes shared memory as native tools over the Model
 Context Protocol (stdio), so MCP-capable CLI agents (Claude Code, Claude Desktop,
-Grok CLI, …) call the six memory verbs directly instead of shelling out to ``vv``.
+Grok CLI, …) call the memory verbs directly instead of shelling out to ``vv``.
 
 **Keyless** — like the rest of VectorVault, it needs only AWS credentials (Bedrock
 does the embeddings via IAM); no LLM API key. It reuses ``vectorvault.tools`` so the
@@ -15,6 +15,8 @@ Configuration (environment):
     VECTORVAULT_ROLE            planner | researcher | auditor | none   (default: planner;
                                 auditor = read-only tools across all indexes)
     VECTORVAULT_AGENT_ID        CloudTrail RoleSessionName     (default: mcp-agent)
+    VECTORVAULT_TEAM_ID         expected session team (optional; store_memory soft-warns
+                                when a write's metadata.team_id differs — V-46)
     VECTORVAULT_ENABLE_METRICS  1/true to emit VectorVault/Client metrics (default: off)
     AWS_REGION / AWS_PROFILE    standard AWS credential resolution
 
@@ -62,6 +64,7 @@ def build_from_env() -> tuple[list[MemoryTool], MemoryClient]:
     region = os.environ.get("AWS_REGION", "us-west-2")
     role = os.environ.get("VECTORVAULT_ROLE", "planner").strip().lower()
     agent_id = os.environ.get("VECTORVAULT_AGENT_ID", "mcp-agent")
+    team_id = os.environ.get("VECTORVAULT_TEAM_ID") or None
     enable_metrics = _truthy(os.environ.get("VECTORVAULT_ENABLE_METRICS"))
 
     ssm = boto3.client("ssm", region_name=region)
@@ -69,13 +72,17 @@ def build_from_env() -> tuple[list[MemoryTool], MemoryClient]:
 
     if role in ("planner", "researcher", "auditor"):
         arn = ssm.get_parameter(Name=f"/vectorvault/role/{role}-arn")["Parameter"]["Value"]
-        client = memory_client_for_agent(role, agent_id, config, role_arn=arn, enable_metrics=enable_metrics)
+        client = memory_client_for_agent(
+            role, agent_id, config, role_arn=arn,
+            enable_metrics=enable_metrics, expected_team_id=team_id,
+        )
         tool_role = role
     else:
         # Ambient credentials: still stamp the real principal on writes (design-doc §5).
         stored_by = _source_identity(boto3.client("sts", region_name=region).get_caller_identity())
         client = MemoryClient.from_config(
-            config, agent_id, stored_by=stored_by, enable_metrics=enable_metrics
+            config, agent_id, stored_by=stored_by,
+            enable_metrics=enable_metrics, expected_team_id=team_id,
         )
         tool_role = "planner"
 
@@ -117,7 +124,11 @@ def main() -> None:
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict[str, Any] | None) -> list[types.TextContent]:
         if name not in by_name:
-            text = json.dumps({"error": f"unknown tool: {name}", "available": list(by_name)})
+            text = json.dumps({
+                "error": f"unknown tool: {name}",
+                "available": list(by_name),
+                "_meta": {"agent_id": client.agent_id, "role": tools[0].role if tools else None},
+            })
         else:
             # boto3 is blocking; run off the event loop so protocol pings stay responsive.
             text = await anyio.to_thread.run_sync(dispatch, tools, client, name, arguments or {})

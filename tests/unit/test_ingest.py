@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from vectorvault.ingest import chunk_markdown, file_to_chunks, parse_frontmatter
+from vectorvault.ingest import (
+    chunk_markdown,
+    file_to_chunks,
+    first_paragraph_summary,
+    parse_frontmatter,
+)
 
 
 def test_parse_frontmatter_strips_block_and_pulls_description():
@@ -58,3 +63,12 @@ def test_file_to_chunks_combines_frontmatter_and_chunking():
 
 def test_chunk_markdown_empty_is_no_chunks():
     assert chunk_markdown("   \n  ") == []
+
+
+def test_first_paragraph_summary_skips_blank_leading_lines():
+    text = "\n\n# Title line\n\nBody sentence one.\n\nSecond paragraph."
+    assert first_paragraph_summary(text) == "Title line"
+
+
+def test_first_paragraph_summary_falls_back_to_prefix():
+    assert first_paragraph_summary("one line only") == "one line only"

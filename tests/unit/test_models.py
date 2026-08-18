@@ -6,14 +6,30 @@ import pytest
 from pydantic import ValidationError
 
 from vectorvault.models import (
+    FILTERABLE_KEYS,
     FILTERABLE_MAX_BYTES,
     ID_MAX_LEN,
+    LINKED_IDS_MAX,
+    NON_FILTERABLE_KEYS,
     MemoryMetadata,
     build_vector_key,
     content_digest,
     content_hash_str,
     normalize_text,
 )
+
+
+def _base_md(**extra):
+    return MemoryMetadata(
+        agent_id="a",
+        team_id="t",
+        task_id="task",
+        memory_type="semantic",
+        created_at=1,
+        canonical_id="task:abc",
+        content_hash="sha256:x",
+        **extra,
+    )
 
 
 def test_normalize_collapses_whitespace_and_lowercases():
@@ -109,6 +125,32 @@ def test_filterable_cap_enforced():
             parent_key="p" * 2000,  # pushes filterable payload past 2 KB
             content_hash="sha256:x",
         )
+
+
+def test_linked_ids_is_filterable_and_rendered():
+    assert "linked_ids" in FILTERABLE_KEYS
+    assert "linked_ids" not in NON_FILTERABLE_KEYS  # frozen set untouched
+    md = _base_md(linked_ids=["taskA:111", "taskB:222"])
+    rendered = md.to_vectors_metadata()
+    assert rendered["linked_ids"] == ["taskA:111", "taskB:222"]
+
+
+def test_linked_ids_defaults_none_and_dropped_when_absent():
+    md = _base_md()
+    assert md.linked_ids is None
+    assert "linked_ids" not in md.to_vectors_metadata()  # None dropped
+
+
+def test_linked_ids_rejects_too_many_elements():
+    with pytest.raises(ValueError, match="linked_ids"):
+        _base_md(linked_ids=[f"t:{i}" for i in range(LINKED_IDS_MAX + 1)])
+
+
+def test_linked_ids_rejects_blank_and_overlong_element():
+    with pytest.raises(ValueError):
+        _base_md(linked_ids=["   "])
+    with pytest.raises(ValueError):
+        _base_md(linked_ids=["x" * 129])
 
 
 def test_filterable_size_reasonable_for_normal_record():
