@@ -774,6 +774,39 @@ def test_list_memories_by_parent_key(client, fakes):
     assert {r.key for r in rows} == {c1, c2}
 
 
+# --- linked_by --------------------------------------------------------------
+
+
+def test_linked_by_finds_dependents(client, fakes):
+    key = "mem_a_dec_bbbbbbbbbbbbbbbb_v1"
+    hit = _hit(
+        key,
+        canonical_id="dec:1",
+        status="active",
+        task_id="dec",
+        content_summary="decision X",
+        linked_ids=["factA:111"],
+    )
+    fakes["s3v"].vectors[(SHARED, key)] = {"data": {"float32": []}, "metadata": hit["metadata"]}
+    fakes["s3v"].query_hits = [hit]
+
+    dependents = client.linked_by("factA:111")
+
+    assert [r.canonical_id for r in dependents] == ["dec:1"]
+    flt = fakes["s3v"].query_calls[-1]["filter"]
+    assert flt == {"$and": [{"status": "active"}, {"linked_ids": "factA:111"}]}
+
+
+def test_linked_by_empty_when_no_dependents(client, fakes):
+    fakes["s3v"].query_hits = []
+    assert client.linked_by("orphan:999") == []
+
+
+def test_linked_by_rejects_blank_canonical_id(client, fakes):
+    with pytest.raises(ValueError):
+        client.linked_by("   ")
+
+
 def test_enable_rerank_reorders(client, fakes):
     h1 = _hit("semantic_win", distance=0.1, canonical_id="c1")
     h1["metadata"]["content_summary"] = "revenue semantic"

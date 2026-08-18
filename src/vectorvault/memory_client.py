@@ -985,6 +985,30 @@ class MemoryClient:
         hits = self._query(index, embedding, {"$and": conds} if conds else None, page_size)
         return [MemoryRecord.from_vector(h.key, h.metadata, h.distance) for h in hits]
 
+    # --- linked_by -----------------------------------------------------------
+
+    def linked_by(
+        self, canonical_id: str, *, index: str | None = None, page_size: int = 100
+    ) -> list[MemoryRecord]:
+        """Active memories whose ``linked_ids`` contains ``canonical_id`` (reverse
+        supports edge). Native mechanism: reuses the same filtered-QueryVectors
+        fallback ``list_memories`` uses, since ListVectors has no metadata filters.
+
+        Known limitation: this is a similarity-ordered, page_size-bounded query,
+        not an exhaustive true-list — same limitation the ``list_memories``
+        fallback already accepts. The anchor embedding (of ``canonical_id``
+        itself) only orders results; the metadata filter does the real
+        filtering work.
+        """
+        index = index or self._config.shared_index
+        cid = canonical_id.strip()
+        if not cid:
+            raise ValueError("canonical_id must be non-empty")
+        filt = {"$and": [{"status": "active"}, {"linked_ids": cid}]}
+        embedding = self._cache.embed(cid)
+        hits = self._query(index, embedding, filt, page_size)
+        return [MemoryRecord.from_vector(h.key, h.metadata, h.distance) for h in hits]
+
     # --- restore_memory ----------------------------------------------------------
 
     def restore_memory(self, key: str, index: str | None = None) -> StoreResult:
