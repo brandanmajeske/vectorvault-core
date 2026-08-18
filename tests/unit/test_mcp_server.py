@@ -57,5 +57,5 @@ def test_auditor_cannot_dispatch_mutating_verbs(client):
     assert set(out["available"]) == {
         "whoami",
         "retrieve_memory", "retrieve_pack", "hydrate_memory", "fetch_working_set",
-        "expand_cites", "galaxy_search", "list_memories", "get_memory",
+        "expand_cites", "galaxy_search", "list_memories", "get_memory", "linked_by",
     }
