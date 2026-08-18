@@ -684,6 +684,23 @@ def test_expand_cites_follows_parent_and_inline_refs(client, fakes):
     assert out.truncated is False
 
 
+def test_expand_cites_follows_linked_ids(client, fakes):
+    fact_key = "mem_a_fact_aaaaaaaaaaaaaaaa_v1"
+    dec_key = "mem_a_dec_bbbbbbbbbbbbbbbb_v1"
+    fact_meta = _hit(fact_key, content="", canonical_id="factA:111")["metadata"]
+    fact_meta.update(content_summary="fact A")
+    dec_meta = _hit(dec_key, content="", canonical_id="dec:1")["metadata"]
+    dec_meta.update(content_summary="decision X", linked_ids=["factA:111"])
+    fakes["s3v"].vectors[(SHARED, fact_key)] = {"data": {"float32": []}, "metadata": fact_meta}
+    fakes["s3v"].vectors[(SHARED, dec_key)] = {"data": {"float32": []}, "metadata": dec_meta}
+    fakes["canon_table"].items["factA:111"] = {"canonical_id": "factA:111", "latest_key": fact_key}
+
+    out = client.expand_cites([dec_key], depth=1)
+
+    keys = {m.key for m in out.memories}
+    assert fact_key in keys  # reached via linked_ids
+
+
 def test_expand_cites_cycle_safe(client, fakes):
     a, b = "mem_a_v1", "mem_b_v1"
     a_meta = _hit(a, content="")["metadata"]

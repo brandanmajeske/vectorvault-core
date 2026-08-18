@@ -739,7 +739,7 @@ class MemoryClient:
 
             if level >= depth:
                 continue
-            for ref in self._cite_neighbors(md):
+            for ref in self._cite_neighbors(md, index):
                 if ref not in seen:
                     frontier.append((ref, level + 1))
 
@@ -807,8 +807,7 @@ class MemoryClient:
             used += tokens
         return memories, missing, used
 
-    @staticmethod
-    def _cite_neighbors(metadata: dict[str, Any]) -> list[str]:
+    def _cite_neighbors(self, metadata: dict[str, Any], index: str) -> list[str]:
         refs: list[str] = []
         seen: set[str] = set()
         for field in ("supersedes", "parent_key"):
@@ -820,7 +819,20 @@ class MemoryClient:
             if key not in seen:
                 seen.add(key)
                 refs.append(key)
+        for cid in metadata.get("linked_ids") or []:
+            key = self._canonical_latest_key(cid, index)
+            if key and key not in seen:
+                seen.add(key)
+                refs.append(key)
         return refs
+
+    def _canonical_latest_key(self, canonical_id: str, index: str) -> str | None:
+        """Best-effort canonical_id -> latest active vector key via the canonical index."""
+        try:
+            row = self._canonical.get(canonical_id)
+        except Exception:
+            return None
+        return row.get("latest_key") if row else None
 
     def _apply_budget(
         self,
