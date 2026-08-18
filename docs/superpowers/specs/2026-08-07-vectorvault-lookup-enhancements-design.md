@@ -49,12 +49,13 @@ not available anyway.
 - Actual rerank invocations per period (one Bedrock `rerank` call per
   `retrieve_memory` where `enable_rerank=True`; top-10 window = 1 unit each).
 - Observed spend attributable to rerank, from Cost Explorer / the budget alarm.
-- Resulting % of the $20 hard cap (`-c budgetUsd`, default $20) at our real
-  retrieval volume.
+- Resulting % of the current $20 cap (`-c budgetUsd`, default $20) at our real
+  retrieval volume. **The $20 cap itself is revisited in this pass** — real spend
+  data may justify raising or lowering it; it is not a fixed constraint.
 
 **Levers already in place:** rerank is opt-in (`enable_rerank=False` by default),
 so the default path costs nothing. The dogfooding data tells us whether to keep it
-opt-in per deployment or raise volume safely under the cap.
+opt-in per deployment or raise volume safely under the (possibly adjusted) cap.
 
 ---
 
@@ -150,6 +151,7 @@ hits; optional reinforce adds a bounded bonus.
 ## Open items
 
 - Run the rerank cost dogfooding pass; record observed spend and % of cap from
-  real usage (Price List API does not expose rerank rates).
+  real usage (Price List API does not expose rerank rates). Revisit the $20 cap
+  based on that data.
 - Bound `linked_ids` length against the 2048-byte filterable cap; pick the limit.
 - Decide `reinforce` surface: standalone verb vs. flag on an existing verb.
