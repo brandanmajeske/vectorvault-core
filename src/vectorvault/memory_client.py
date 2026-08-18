@@ -827,7 +827,10 @@ class MemoryClient:
         return refs
 
     def _canonical_latest_key(self, canonical_id: str, index: str) -> str | None:
-        """Best-effort canonical_id -> latest active vector key via the canonical index."""
+        """Best-effort canonical_id -> latest vector key via the canonical index.
+
+        Returns the index's ``latest_key`` (newest version); the row is not
+        re-checked for ``status``, so a superseded/archived latest still resolves."""
         try:
             row = self._canonical.get(canonical_id)
         except Exception:

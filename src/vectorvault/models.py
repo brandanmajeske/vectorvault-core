@@ -109,7 +109,8 @@ NON_FILTERABLE_KEYS: tuple[str, ...] = (
 
 FILTERABLE_MAX_BYTES = 2048  # S3 Vectors per-vector filterable cap (design-doc §2)
 ID_MAX_LEN = 128  # canonical_id and other IDs are identifiers, not prose (PR 1 risk note)
-LINKED_IDS_MAX = 32  # bounded so linked_ids stays within the 2048-byte filterable cap
+LINKED_IDS_MAX = 32  # count bound on linked_ids; the FILTERABLE_MAX_BYTES validator is the
+# real cap enforcer (32 ids x ID_MAX_LEN can still exceed 2048 bytes and is rejected at store)
 
 
 class MemoryMetadata(BaseModel):
