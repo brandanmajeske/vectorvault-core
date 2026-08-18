@@ -7,7 +7,7 @@ agent *is* the LLM; the only credential is AWS (Bedrock Titan does the embedding
 via IAM). Output is JSON so an agent can parse it.
 
     vv store   "<content>" --team T --task K --type semantic [--origin agent|external] [--supersedes KEY]
-    vv retrieve "<query>"  [--task K] [--type TYPE] [--top-k 5]
+    vv retrieve "<query>"  [--task K] [--type TYPE] [--top-k 5] [--rerank]
     vv list    --task K [--type TYPE] [--status active]   |   --canonical CID
     vv get     <key>
     vv archive <key>
@@ -91,6 +91,10 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--task", default=None)
     r.add_argument("--type", default=None)
     r.add_argument("--top-k", type=int, default=5)
+    r.add_argument("--rerank", action="store_true",
+                   help="Opt-in Cohere Rerank via Bedrock (~$0.002/query; default off). "
+                        "Re-orders the collapsed top-10 hits; needs bedrock:Rerank (planner/"
+                        "researcher roles have it). Falls back to default order on any failure.")
 
     ls = sub.add_parser("list", help="Exact lookups / scoped listings (not semantic search).")
     ls.add_argument("--task", default=None)
@@ -180,7 +184,8 @@ def main(argv: list[str] | None = None) -> int:
         emit(client.store_memory(args.content, meta, supersedes_key=args.supersedes))
     elif args.cmd == "retrieve":
         filters = {k: v for k, v in (("task_id", args.task), ("memory_type", args.type)) if v}
-        emit(client.retrieve_memory(args.query, filters=filters or None, top_k=args.top_k))
+        emit(client.retrieve_memory(
+            args.query, filters=filters or None, top_k=args.top_k, enable_rerank=args.rerank))
     elif args.cmd == "list":
         if args.canonical:
             filters = {"canonical_id": args.canonical}
