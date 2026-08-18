@@ -74,6 +74,7 @@ class MemoryClient:
         *,
         config: Config,
         agent_id: str,
+        stored_by: str = "",
         s3vectors,
         s3,
         embedding_cache: EmbeddingCache,
@@ -91,6 +92,7 @@ class MemoryClient:
     ) -> None:
         self._config = config
         self._agent_id = agent_id
+        self._stored_by = stored_by or None  # real AWS principal (derived); None if ambient creds
         self._s3v = s3vectors
         self._s3 = s3
         self._cache = embedding_cache
@@ -125,6 +127,7 @@ class MemoryClient:
         config: Config,
         agent_id: str,
         *,
+        stored_by: str = "",
         session=None,
         enable_metrics: bool = False,
         metrics: MetricsEmitter | None = None,
@@ -156,6 +159,7 @@ class MemoryClient:
         return cls(
             config=config,
             agent_id=agent_id,
+            stored_by=stored_by,
             s3vectors=session.client("s3vectors", region_name=config.region),
             s3=session.client("s3", region_name=config.region),
             embedding_cache=cache,
@@ -240,6 +244,7 @@ class MemoryClient:
 
         md = MemoryMetadata(
             agent_id=self._agent_id,
+            stored_by=self._stored_by,
             team_id=metadata["team_id"],
             task_id=task_id,
             memory_type=metadata["memory_type"],
@@ -292,6 +297,7 @@ class MemoryClient:
 
         md = MemoryMetadata(
             agent_id=self._agent_id,
+            stored_by=self._stored_by,
             team_id=metadata["team_id"],
             task_id=task_id,
             memory_type=metadata["memory_type"],

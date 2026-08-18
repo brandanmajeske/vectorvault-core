@@ -33,13 +33,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any
 
 import boto3
 
 from vectorvault import Config, MemoryClient
-from vectorvault.tools import memory_client_for_agent
+from vectorvault.tools import _source_identity, memory_client_for_agent
 
 
 def build_client(args: argparse.Namespace) -> MemoryClient:
@@ -49,7 +50,10 @@ def build_client(args: argparse.Namespace) -> MemoryClient:
     if args.role in ("planner", "researcher", "auditor", "admin"):
         arn = ssm.get_parameter(Name=f"/vectorvault/role/{args.role}-arn")["Parameter"]["Value"]
         return memory_client_for_agent(args.role, args.agent_id, config, role_arn=arn)
-    return MemoryClient.from_config(config, args.agent_id)
+    # Ambient credentials (no role hop): still stamp the real principal on writes by
+    # deriving it from the caller's own identity (design-doc §5).
+    stored_by = _source_identity(boto3.client("sts", region_name=args.region).get_caller_identity())
+    return MemoryClient.from_config(config, args.agent_id, stored_by=stored_by)
 
 
 def emit(obj: Any) -> None:
@@ -63,6 +67,9 @@ def emit(obj: Any) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="vv", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--profile", default=None,
+                   help="AWS profile to use (overrides the AWS_PROFILE env / .vvrc default). "
+                        "Applied to every AWS call, including the assumed-role session.")
     p.add_argument("--region", default="us-west-2", help="AWS region (default us-west-2).")
     p.add_argument("--role", default="none", choices=["none", "planner", "researcher", "auditor", "admin"],
                    help="Assume this scoped IAM role; default uses ambient credentials. "
@@ -122,10 +129,42 @@ def _run_galaxy(rest: list[str]) -> int:
     return mod.main(rest)
 
 
+def _extract_profile(argv: list[str]) -> str | None:
+    """Pull `--profile X` / `--profile=X` out of argv, in place, from any position.
+
+    --profile is a global that applies regardless of where it sits, but the `galaxy`
+    subcommand forwards everything after it verbatim to vv_galaxy.py (which has no
+    --profile). Consuming it here first makes `vv --galaxy --profile X` and
+    `vv --profile X galaxy` both work, and keeps it out of the galaxy passthrough.
+    """
+    profile = None
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok == "--profile":
+            profile = argv[i + 1] if i + 1 < len(argv) else None
+            del argv[i : i + 2]
+            continue
+        if tok.startswith("--profile="):
+            profile = tok.split("=", 1)[1]
+            del argv[i]
+            continue
+        i += 1
+    return profile
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv[:1] == ["--galaxy"]:  # ergonomic alias: `vv --galaxy ...` == `vv galaxy ...`
-        argv[0] = "galaxy"
+    # --profile wins over the ambient AWS_PROFILE / .vvrc default. Consume it before
+    # argparse (from any position) and set it in the env so it reaches every AWS call
+    # uniformly — the SSM/STS clients, the assumed-role session, and from_config's
+    # internal boto3 Session (design-doc §5) — including the galaxy hand-off.
+    profile = _extract_profile(argv)
+    if profile:
+        os.environ["AWS_PROFILE"] = profile
+    # Ergonomic alias: `--galaxy` anywhere == the `galaxy` subcommand.
+    if "--galaxy" in argv:
+        argv[argv.index("--galaxy")] = "galaxy"
     parser = build_parser()
     # parse_known_args so galaxy's flags pass through untouched (argparse REMAINDER
     # in a subparser refuses tokens that start with '-'); other verbs stay strict.

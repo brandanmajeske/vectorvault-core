@@ -21,17 +21,26 @@ See docs/memory-galaxy.md.
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import math
 import random
 import subprocess
 import sys
+import urllib.parse
 import webbrowser
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CRATE = REPO / "viz" / "galaxy3d"
 TEMPLATES = REPO / "viz" / "templates"
+
+import importlib.util as _il  # noqa: E402 (sibling import needs Path/REPO defined above)
+
+_gs_spec = _il.spec_from_file_location(
+    "galaxy_search", str(Path(__file__).resolve().parent / "galaxy_search.py"))
+galaxy_search = _il.module_from_spec(_gs_spec)
+_gs_spec.loader.exec_module(galaxy_search)
 
 # --- PCA (pure Python; N is small so the N x N Gram matrix is cheap) ---------------
 
@@ -83,13 +92,20 @@ def fetch_vectors(region: str, role: str) -> list[dict]:
     import boto3
 
     from vectorvault import Config
+    from vectorvault.tools import _source_identity
 
     ssm = boto3.client("ssm", region_name=region)
     config = Config.from_ssm(ssm)
     if role != "none":
         arn = ssm.get_parameter(Name=f"/vectorvault/role/{role}-arn")["Parameter"]["Value"]
-        creds = boto3.client("sts", region_name=region).assume_role(
-            RoleArn=arn, RoleSessionName="vv-galaxy")["Credentials"]
+        sts = boto3.client("sts", region_name=region)
+        # SourceIdentity is REQUIRED by the role trust policy (enforce mode, design-doc
+        # §5) — the assume fails without it. Derived from the caller's base identity.
+        creds = sts.assume_role(
+            RoleArn=arn,
+            RoleSessionName="vv-galaxy",
+            SourceIdentity=_source_identity(sts.get_caller_identity()),
+        )["Credentials"]
         s3v = boto3.client(
             "s3vectors", region_name=region,
             aws_access_key_id=creds["AccessKeyId"],
@@ -112,6 +128,28 @@ def fetch_vectors(region: str, role: str) -> list[dict]:
     return vectors
 
 
+def build_search_backend(region: str, role: str, active_only: bool):
+    """Build the live search backend (GalaxySearch) under the read role, or None.
+
+    Returns None for role == "none": with ambient credentials there is no scoped
+    principal to attribute reads to, so we keep search off rather than run it
+    un-attributed. The /search and /memory endpoints then answer 503 and the UI
+    hides the semantic affordance.
+    """
+    import boto3
+
+    from vectorvault import Config, MemoryClient
+    from vectorvault.tools import memory_client_for_agent
+
+    if role == "none":
+        return None
+    ssm = boto3.client("ssm", region_name=region)
+    config = Config.from_ssm(ssm)
+    arn = ssm.get_parameter(Name=f"/vectorvault/role/{role}-arn")["Parameter"]["Value"]
+    client: MemoryClient = memory_client_for_agent(role, "vv-galaxy", config, role_arn=arn)
+    return galaxy_search.GalaxySearch(client, active_only=active_only)
+
+
 def active_only(vectors: list[dict]) -> list[dict]:
     """Only live memories: status == 'active' (drops superseded version history and
     archived records in their 30-day grace window)."""
@@ -131,6 +169,7 @@ def to_points(vectors: list[dict], dims: int) -> list[dict]:
             "task": m.get("task_id", "?"), "type": m.get("memory_type", "?"),
             "status": m.get("status", "?"), "version": int(m.get("version", 1) or 1),
             "created": int(m.get("created_at", 0) or 0),
+            "stored_by": m.get("stored_by") or "—",  # real AWS principal (v1.9); — if ambient
             "text": content[:280],  # tooltip preview + star sizing
         }
         if len(content) > 280:
@@ -154,7 +193,25 @@ def build_html(template: Path, points: list[dict], wasm_b64: str | None) -> str:
     return html
 
 
-def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser: bool) -> int:
+def handle_refresh(refresh_fn) -> tuple[int, dict | list]:
+    """Route logic for GET /refresh — pure, socket-free (unit-testable).
+
+    ``refresh_fn`` is a zero-arg callable that recomputes the current point list
+    (same shape ``to_points`` produces). Any exception during recompute is caught
+    so a transient AWS/network hiccup never crashes the running server.
+    """
+    try:
+        points = refresh_fn()
+    except Exception as exc:
+        print(f"refresh failed: {exc}", file=sys.stderr)
+        return 500, {"error": "refresh failed — see server log"}
+    if not points:
+        return 503, {"error": "no memories in the shared index"}
+    return 200, points
+
+
+def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser: bool,
+          backend=None, refresh_fn=None) -> int:
     """Serve the generated pages over HTTP until Ctrl+C. ``/`` redirects to the newest
     page (the 3D galaxy when both were generated — it's written last)."""
     import http.server
@@ -165,7 +222,30 @@ def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser
         def __init__(self, *a, **kw):
             super().__init__(*a, directory=str(out_dir), **kw)
 
+        def _send_json(self, status, payload):  # noqa: N802 not needed (private helper)
+            body = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):  # noqa: N802 (http.server API)
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path == "/search":
+                q = urllib.parse.parse_qs(parsed.query).get("q", [None])[0]
+                self._send_json(*galaxy_search.handle_search(backend, q))
+                return
+            if parsed.path == "/memory":
+                key = urllib.parse.parse_qs(parsed.query).get("key", [None])[0]
+                self._send_json(*galaxy_search.handle_get(backend, key))
+                return
+            if parsed.path == "/refresh":
+                if refresh_fn is None:
+                    self._send_json(503, {"error": "refresh is disabled on this page"})
+                else:
+                    self._send_json(*handle_refresh(refresh_fn))
+                return
             if self.path in ("/", "/index.html"):
                 self.send_response(302)
                 self.send_header("Location", "/" + index)
@@ -179,8 +259,15 @@ def serve(out_dir: Path, written: list[Path], port: int, bind: str, open_browser
     try:
         httpd = http.server.ThreadingHTTPServer((bind, port), Handler)
     except OSError as exc:
-        print(f"cannot bind {bind}:{port} ({exc.strerror}); try --port <other>", file=sys.stderr)
-        return 1
+        # Busy port (e.g. a prior galaxy server still running): fall back to a free one
+        # rather than crashing. Skip the fallback only when port == 0 (already asking
+        # for a free port) or the failure isn't EADDRINUSE.
+        if exc.errno != errno.EADDRINUSE or port == 0:
+            print(f"cannot bind {bind}:{port} ({exc.strerror}); try --port <other>", file=sys.stderr)
+            return 1
+        print(f"port {port} is in use; picking a free port instead (--port to choose)", file=sys.stderr)
+        httpd = http.server.ThreadingHTTPServer((bind, 0), Handler)
+    port = httpd.server_address[1]  # resolve the actual port (matters after a free-port fallback)
     if bind not in ("127.0.0.1", "localhost", "::1"):
         print(f"WARNING: binding {bind} exposes your memories beyond this machine", file=sys.stderr)
     url = f"http://{'127.0.0.1' if bind == '0.0.0.0' else bind}:{port}/"
@@ -222,7 +309,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-open", action="store_true", help="Don't launch a browser.")
     p.add_argument("--no-serve", action="store_true",
                    help="Just write the files; don't start the web server (CI/scripts).")
-    p.add_argument("--port", type=int, default=8777, help="Web server port (default 8777).")
+    p.add_argument("--no-search", action="store_true",
+                   help="Disable the live semantic search endpoints (/search, /memory). "
+                        "The page still renders and the lexical filter still works.")
+    p.add_argument("--port", type=int, default=8777,
+                   help="Web server port (default 8777; 0 picks a free port).")
     p.add_argument("--bind", default="127.0.0.1",
                    help="Bind address (default 127.0.0.1 — the pages contain real memories; "
                         "0.0.0.0 exposes them on your network).")
@@ -239,6 +330,13 @@ def main(argv: list[str] | None = None) -> int:
     if not vectors:
         print("the shared index is empty — nothing to plot", file=sys.stderr)
         return 1
+
+    def refresh_fn():
+        vecs = fetch_vectors(args.region, args.role)
+        if args.active:
+            vecs = active_only(vecs)
+        return to_points(vecs, 3)
+
     teams: dict[str, int] = {}
     for v in vectors:
         t = (v.get("metadata") or {}).get("team_id", "?")
@@ -267,7 +365,10 @@ def main(argv: list[str] | None = None) -> int:
         if not args.no_open and written:
             webbrowser.open(written[-1].as_uri())  # old behavior: open the file directly
         return 0
-    return serve(out_dir, written, args.port, args.bind, open_browser=not args.no_open)
+    backend = None if args.no_search else build_search_backend(args.region, args.role, args.active)
+    refresh = refresh_fn if args.mode in ("3d", "both") else None
+    return serve(out_dir, written, args.port, args.bind,
+                 open_browser=not args.no_open, backend=backend, refresh_fn=refresh)
 
 
 if __name__ == "__main__":

@@ -172,6 +172,16 @@ for the full version.)
 is what keeps attribution, CloudTrail sessions, and supersession chains unambiguous**
 once multiple sessions and projects share the vault. The rules:
 
+> **`agent_id` vs `stored_by` (v1.9).** `agent_id` is the *logical* session label you
+> choose here — self-asserted, hence this convention. The *real AWS principal* behind it
+> is captured separately and is **not** self-asserted: on any role assume, the client
+> derives it from `GetCallerIdentity` and sets it as `sts:SourceIdentity` (required by the
+> role trust policy — an assume without one is denied), which CloudTrail records on every
+> call and the client stamps on each vector as the filterable `stored_by` field. So
+> `stored_by` answers "which human/principal?" with IAM certainty; `agent_id` answers
+> "which logical session?" by convention. Set `agent_id` well; `stored_by` takes care of
+> itself.
+
 1. **Interactive agent sessions:** `<agent>-<project-slug>` — lowercase kebab.
    `<agent>` = the model/CLI family (`claude`, `grok`, `gemma`, …); `<project-slug>` =
    the registered short slug of the project the session is working in. One session, one

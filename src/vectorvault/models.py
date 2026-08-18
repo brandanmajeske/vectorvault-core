@@ -89,6 +89,7 @@ FILTERABLE_KEYS: tuple[str, ...] = (
     "canonical_id",
     "version",
     "parent_key",
+    "stored_by",
 )
 NON_FILTERABLE_KEYS: tuple[str, ...] = (
     "content",
@@ -123,6 +124,10 @@ class MemoryMetadata(BaseModel):
     canonical_id: str
     version: int = Field(default=1, ge=1)
     parent_key: str | None = None
+    # Real AWS principal that stored this, derived at assume time (email/username via
+    # GetCallerIdentity) — NOT self-asserted, unlike agent_id. Filterable and additive
+    # (design-doc §5); None on ambient-cred writes where no principal is derived.
+    stored_by: str | None = None
 
     # Non-filterable
     content: str | None = None
@@ -180,6 +185,7 @@ class MemoryRecord(BaseModel):
     origin: str
     task_id: str
     agent_id: str
+    stored_by: str | None = None  # real AWS principal (derived), vs. self-asserted agent_id
     team_id: str
     version: int
     created_at: int
@@ -202,6 +208,7 @@ class MemoryRecord(BaseModel):
             origin=metadata.get("origin", ""),
             task_id=metadata.get("task_id", ""),
             agent_id=metadata.get("agent_id", ""),
+            stored_by=metadata.get("stored_by"),
             team_id=metadata.get("team_id", ""),
             version=int(metadata.get("version", 1)),
             created_at=int(metadata.get("created_at", 0)),

@@ -33,7 +33,13 @@ import sys
 from typing import Any
 
 from vectorvault import Config, MemoryClient
-from vectorvault.tools import MemoryTool, create_memory_tools, execute_tool, memory_client_for_agent
+from vectorvault.tools import (
+    MemoryTool,
+    _source_identity,
+    create_memory_tools,
+    execute_tool,
+    memory_client_for_agent,
+)
 
 SERVER_NAME = "vectorvault"
 
@@ -66,7 +72,11 @@ def build_from_env() -> tuple[list[MemoryTool], MemoryClient]:
         client = memory_client_for_agent(role, agent_id, config, role_arn=arn, enable_metrics=enable_metrics)
         tool_role = role
     else:
-        client = MemoryClient.from_config(config, agent_id, enable_metrics=enable_metrics)
+        # Ambient credentials: still stamp the real principal on writes (design-doc §5).
+        stored_by = _source_identity(boto3.client("sts", region_name=region).get_caller_identity())
+        client = MemoryClient.from_config(
+            config, agent_id, stored_by=stored_by, enable_metrics=enable_metrics
+        )
         tool_role = "planner"
 
     return create_memory_tools(tool_role, client), client  # type: ignore[arg-type]

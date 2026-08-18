@@ -3,7 +3,7 @@
 **Version:** 1.8  
 **Date:** July 10, 2026  
 **Author:** Grok (for Brandan M)  
-**Status:** Revised — claude-review.md C1–C4 + P1 security items folded (v1.3–v1.5); hard cost cap $20/month; **deployment Region set to us-west-2** (v1.6); roles hardening — Admin role, auditor tool surface, trust narrowing, §5 known limitations (v1.7); agent identity naming convention (v1.8); Ready for Implementation  
+**Status:** Revised — claude-review.md C1–C4 + P1 security items folded (v1.3–v1.5); hard cost cap $20/month; **deployment Region set to us-west-2** (v1.6); roles hardening — Admin role, auditor tool surface, trust narrowing, §5 known limitations (v1.7); agent identity naming convention (v1.8); IAM-enforced user attribution — SourceIdentity + filterable `stored_by` (v1.9); Ready for Implementation  
 **Deployment Region:** **us-west-2** (US West, Oregon). Region-bound resources (KMS key, vector/content buckets) are one-way doors — fixed at first deploy. S3 Vectors and Bedrock Titan Embed v2 are both available there; per-service pricing is equivalent to us-east-1, so the cost model below is unchanged.  
 
 ## 1. Overview
@@ -66,6 +66,7 @@ The vector index is the **search layer**; S3 (metadata or object store) is the *
   "data": { "float32": [/* 1024-dim embedding */] },
   "metadata": {
     "agent_id": "planner",
+    "stored_by": "jane.doe@corp.com",
     "team_id": "research-alpha",
     "task_id": "q2-report",
     "memory_type": "semantic",
@@ -99,7 +100,8 @@ Non-filterable metadata keys **must be configured when the index is created** an
 **Filterable metadata** (≤ 2 KB total per vector):
 | Key | Type | Purpose |
 |---|---|---|
-| `agent_id` | string | Writer identity |
+| `agent_id` | string | Logical writer identity (self-asserted `RoleSessionName`; §5) |
+| `stored_by` | string | Real AWS principal, derived from `GetCallerIdentity` at assume time — IAM-enforced via `SourceIdentity`, not self-asserted (v1.9, §5). Absent on ambient-cred writes. |
 | `team_id` | string | Team scope |
 | `task_id` | string | Task scope |
 | `memory_type` | string | `episodic`, `semantic`, `procedural`, `document`, `chunk` |
@@ -315,7 +317,7 @@ Metadata filters (e.g., `task_id`) are **application-level scoping** applied at 
 
 #### Known limitations (accepted, v1.7)
 
-- **`agent_id` is self-asserted.** Any caller may pass any `RoleSessionName`, so CloudTrail attribution identifies *which role* acted with certainty but trusts the caller for *which agent*. Honest-actor bookkeeping, not authentication. Enforcing it would need role-per-agent or `sts:RoleSessionName` conditions — deliberately out of scope at this system's scale.
+- **`agent_id` (the logical agent label) is self-asserted.** Any caller may pass any `RoleSessionName`, so CloudTrail attribution identifies *which role* acted with certainty but trusts the caller for *which logical agent*. Honest-actor bookkeeping, not authentication. Enforcing the *label* would need role-per-agent or `sts:RoleSessionName` conditions — deliberately out of scope at this system's scale. **The real AWS principal is NOT self-asserted (v1.9):** each human role's trust policy *requires* an `sts:SourceIdentity` on assume (enforce mode, `StringLike sts:SourceIdentity=*`), which is sticky, immutable-for-the-session, and propagates to every CloudTrail event. The client derives it server-side from `GetCallerIdentity` (the caller cannot forge it) and denormalizes it onto each vector as the filterable `stored_by` field. So "which human stored this?" is IAM-answerable both from CloudTrail and from the record itself, independent of the self-asserted `agent_id`.
 
 **Agent identity naming convention (v1.8, normative).** Because `agent_id` is convention-enforced, ids MUST be unambiguous by construction: interactive agent sessions use `<agent>-<project-slug>` (e.g. `claude-vv`, `grok-acme`) — one session, one project, one id, never reused across projects; utility processes use `<purpose>-bot`; test/probe processes use `e2e-*`/`*-probe` and never write durable memories. Slugs are registered in the vault's live agent directory (team `vectorvault`, task `agent-directory`). Full rules + legacy-id mapping: the CLI-agents runbook §"Agent identity convention".
 - **Writes within an index are key-agnostic.** `PutVectors` cannot be IAM-scoped to key prefixes, so any writer role can overwrite *any* key in an index it can reach (including other agents' memories in `shared-team-memory`). Compensating controls: hash-versioned keys, supersession chains, CloudTrail write data events, and S3-Vectors-event reconciliation. The boundary remains the **index**, never the key.
@@ -536,5 +538,6 @@ Costs scale primarily with query volume and index size (data-processed charges).
 | 1.6 | Deployment Region set (owner, 2026-07-08) | Deploy Region fixed to **us-west-2** (deployment profile default); cost table relabeled; pricing unchanged vs us-east-1. Region-bound resources (KMS, buckets) are one-way doors. |
 | 1.8 | Agent identity convention (owner directive, 2026-07-10) | `agent_id` naming standardized after a live collision (two sessions as `claude-code`; Grok's user-scope config stamping `grok-cli` across projects): sessions = `<agent>-<project-slug>`, utilities = `<purpose>-bot`, tests = `e2e-*`; slugs registered in the vault agent directory; legacy ids preserved in history. Codified in runbook + this §5. |
 | 1.7 | Roles hardening (owner-approved, 2026-07-10) | **MemoryAdminRole** — only human-assumable `DeleteVectors`, for attributed `purge_memory` (`vv purge --role admin`) instead of raw account-admin creds; template check now locks `DeleteVectors` to exactly TTL + Admin. **Auditor tool surface** — read-only verbs across all indexes in `create_memory_tools`/`vv`/MCP (right for low-trust agents, e.g. small local models). **Trust narrowing** — `-c trustedPrincipalArn` now an `ArnLike aws:PrincipalArn` condition (wildcard patterns, SSO-safe). §5 **Known limitations** documented: self-asserted `agent_id`; key-agnostic `PutVectors` within an index. |
+| 1.9 | IAM-enforced user attribution (owner directive, 2026-07-10) | The real AWS principal behind an agent is now IAM-attributed, not self-asserted. **Enforce mode** — each human role's trust policy *requires* `sts:SourceIdentity` on assume (`StringLike sts:SourceIdentity=*`) and grants `sts:SetSourceIdentity`; the TTL service role is excluded. **Client** — `memory_client_for_agent` derives the principal from `GetCallerIdentity` (server-side, unforgeable), sets it as `SourceIdentity` (sticky, on every CloudTrail event) and stamps it on each vector as the new **filterable** `stored_by` field (additive — the frozen non-filterable schema is untouched; no re-ingest). Ambient-cred and galaxy paths derive it too. Template check asserts the enforce condition. |
 
 ---
