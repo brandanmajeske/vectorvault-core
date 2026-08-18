@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 from conftest import FIXED_NOW
 
@@ -439,6 +441,52 @@ def test_hydrate_memory_reports_missing_keys(client, fakes):
     out = client.hydrate_memory(["missing-key"])
     assert out.memories == []
     assert out.missing_keys == ["missing-key"]
+
+
+# --- usage feedback: record_use on hydration only -------------------------------
+
+
+def test_hydrate_memory_records_use(client, fakes):
+    key = "mem_planner_q2_deadbeefdeadbeef_v1"
+    derived_key = f"{SHARED}/{key}.json"
+    fakes["s3"].objects[("content-bkt", derived_key)] = b'{"content": "full body"}'
+    meta = _hit(key, canonical_id="dec:1", content_summary="brief")["metadata"]
+    fakes["s3v"].vectors[(SHARED, key)] = {"data": {"float32": []}, "metadata": meta}
+
+    spy = MagicMock()
+    client._canonical.record_use = spy
+
+    out = client.hydrate_memory([key])
+    assert out.memories[0].hydrated is True
+    spy.assert_called_once_with("dec:1", FIXED_NOW)
+
+
+def test_summary_retrieve_does_not_record_use(client, fakes):
+    fakes["s3v"].query_hits = [
+        _hit("k", canonical_id="dec:1", distance=0.1, content_summary="decision X"),
+    ]
+    spy = MagicMock()
+    client._canonical.record_use = spy
+
+    out = client.retrieve_memory("decision", detail_level="summary")
+    assert out[0].hydrated is False
+    spy.assert_not_called()
+
+
+def test_apply_hydrate_keys_records_use(client, fakes):
+    key = "mem_planner_q2_deadbeefdeadbeef_v1"
+    derived_key = f"{SHARED}/{key}.json"
+    fakes["s3"].objects[("content-bkt", derived_key)] = b'{"content": "full body"}'
+    hit = _hit(key, canonical_id="dec:2", distance=0.1, content_summary="brief")
+    fakes["s3v"].query_hits = [hit]
+    fakes["s3v"].vectors[(SHARED, key)] = {"data": {"float32": []}, "metadata": hit["metadata"]}
+
+    spy = MagicMock()
+    client._canonical.record_use = spy
+
+    out = client.retrieve_memory("q", hydrate_keys=[key])
+    assert out[0].hydrated is True
+    spy.assert_called_once_with("dec:2", FIXED_NOW)
 
 
 # --- retrieve: rank_mode (V-45) ------------------------------------------------

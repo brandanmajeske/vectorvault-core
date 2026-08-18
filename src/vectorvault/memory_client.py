@@ -501,6 +501,8 @@ class MemoryClient:
             record = MemoryRecord.from_vector(vec.key, vec.metadata)
             record.content = chosen
             record.hydrated = full is not None and chosen == full
+            if record.hydrated:
+                self._canonical.record_use(record.canonical_id, int(self._clock()))
             memories.append(record)
             used += tokens
         return HydrateResult(memories=memories, tokens_used=used, missing_keys=missing)
@@ -883,6 +885,8 @@ class MemoryClient:
             record = MemoryRecord.from_vector(hit.key, md, hit.distance)
             record.content = chosen
             record.hydrated = hydrated
+            if record.hydrated:
+                self._canonical.record_use(record.canonical_id, int(self._clock()))
             results.append(record)
             used += tokens
         return results
@@ -921,6 +925,7 @@ class MemoryClient:
             used += tokens - self._estimate_tokens(record.content)
             record.content = full
             record.hydrated = True
+            self._canonical.record_use(record.canonical_id, int(self._clock()))
         return results
 
     @staticmethod
