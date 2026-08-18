@@ -317,6 +317,7 @@ class MemoryClient:
             content_hash=chash,
             provenance=metadata.get("provenance"),
             confidence=metadata.get("confidence"),
+            linked_ids=metadata.get("linked_ids"),
         )
         self._put_vector(index, key, embedding, md.to_vectors_metadata())
         if md.expires_at and md.expires_at < NO_EXPIRY:
@@ -370,6 +371,7 @@ class MemoryClient:
             provenance=metadata.get("provenance"),
             supersedes=old_key,
             confidence=metadata.get("confidence"),
+            linked_ids=metadata.get("linked_ids") or old.metadata.get("linked_ids"),
         )
         self._put_vector(index, new_key, embedding, md.to_vectors_metadata())
         if md.expires_at and md.expires_at < NO_EXPIRY:

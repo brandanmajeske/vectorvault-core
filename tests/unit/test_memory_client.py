@@ -123,6 +123,72 @@ def test_explicit_supersession_rewrites_old_status(client, fakes):
     assert new_meta["canonical_id"] == "c"
 
 
+def test_store_persists_linked_ids(client, fakes):
+    fakes["s3v"].query_hits = []
+    res = client.store_memory(
+        "decision X rests on fact A",
+        {**BASE, "content_summary": "decision X", "linked_ids": ["factA:111"]},
+    )
+    stored = fakes["s3v"].vectors[(SHARED, res.key)]["metadata"]
+    assert stored["linked_ids"] == ["factA:111"]
+
+
+def test_supersede_carries_linked_ids_forward(client, fakes):
+    old_key = "mem_planner_q2_oldoldoldoldold0_v1"
+    fakes["s3v"].vectors[(SHARED, old_key)] = {
+        "data": {"float32": [0.1, 0.2]},
+        "metadata": {
+            "agent_id": "planner",
+            "team_id": "research-alpha",
+            "task_id": "q2",
+            "memory_type": "semantic",
+            "status": "active",
+            "origin": "agent",
+            "created_at": 900000,
+            "canonical_id": "c",
+            "version": 1,
+            "content_hash": "sha256:old",
+            "content": "Q2 revenue grew 12% YoY",
+            "linked_ids": ["factA:111"],
+        },
+    }
+    fakes["s3v"].query_hits = []
+    res = client.store_memory("Q2 revenue grew 21% YoY", dict(BASE), supersedes_key=old_key)
+
+    new_meta = fakes["s3v"].vectors[(SHARED, res.key)]["metadata"]
+    assert new_meta["linked_ids"] == ["factA:111"]
+
+
+def test_supersede_uses_new_linked_ids_when_provided(client, fakes):
+    old_key = "mem_planner_q2_oldoldoldoldold0_v1"
+    fakes["s3v"].vectors[(SHARED, old_key)] = {
+        "data": {"float32": [0.1, 0.2]},
+        "metadata": {
+            "agent_id": "planner",
+            "team_id": "research-alpha",
+            "task_id": "q2",
+            "memory_type": "semantic",
+            "status": "active",
+            "origin": "agent",
+            "created_at": 900000,
+            "canonical_id": "c",
+            "version": 1,
+            "content_hash": "sha256:old",
+            "content": "Q2 revenue grew 12% YoY",
+            "linked_ids": ["factA:111"],
+        },
+    }
+    fakes["s3v"].query_hits = []
+    res = client.store_memory(
+        "Q2 revenue grew 21% YoY",
+        {**BASE, "linked_ids": ["factB:222"]},
+        supersedes_key=old_key,
+    )
+
+    new_meta = fakes["s3v"].vectors[(SHARED, res.key)]["metadata"]
+    assert new_meta["linked_ids"] == ["factB:222"]
+
+
 # --- store: injection screen ----------------------------------------------------
 
 
