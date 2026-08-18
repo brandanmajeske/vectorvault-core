@@ -38,30 +38,23 @@ attribution (`_meta`), `galaxy_search` as a native tool, and the document/chunk
 model (`parent_key`, chunk→parent promotion). The MCP server now exposes 13
 verbs, not the legacy 6.
 
-## Cost analysis — Cohere Rerank 3.5 (still open)
+## Cost analysis — Cohere Rerank 3.5 (dogfooding pass)
 
-**Live-pricing note:** the AWS Price List API (queried 2026-08-18 via the pricing
-MCP) does **not** expose Bedrock Rerank models. The figure below is the last
-published Cohere Rerank rate and **must be verified in the AWS Bedrock pricing
-console before enabling rerank in a deployment.**
+**Approach:** cost analysis is deferred to a **dogfooding pass** — we measure real
+rerank cost from our own usage rather than a speculative pricing table. The AWS
+Price List API does not expose Bedrock Rerank models, so a live-API estimate is
+not available anyway.
 
-- **Published rate:** Cohere Rerank 3.5 on Bedrock bills per **1,000 queries**;
-  one query reranks up to 100 documents. Published price ≈ **$2.00 per 1,000
-  queries**. *Verify before deploy.*
-- **VectorVault:** one rerank call per `retrieve_memory` where
-  `enable_rerank=True`; the top-10 window is well under the 100-doc unit, so each
-  retrieve = 1 unit.
-- **Monthly estimate vs. the $20 hard cap** (`-c budgetUsd`, default $20):
+**What the dogfooding pass measures:**
+- Actual rerank invocations per period (one Bedrock `rerank` call per
+  `retrieve_memory` where `enable_rerank=True`; top-10 window = 1 unit each).
+- Observed spend attributable to rerank, from Cost Explorer / the budget alarm.
+- Resulting % of the $20 hard cap (`-c budgetUsd`, default $20) at our real
+  retrieval volume.
 
-  | Retrievals/month | Rerank units | Est. cost | % of $20 cap |
-  |------------------|-------------|-----------|--------------|
-  | 10,000 | 10,000 | ~$20.00 | 100% |
-  | 5,000 | 5,000 | ~$10.00 | 50% |
-  | 1,000 | 1,000 | ~$2.00 | 10% |
-
-- **Levers:** rerank is already opt-in (`enable_rerank=False` by default), so the
-  default path costs nothing. At high volume, rerank alone can approach the cap —
-  keep it opt-in, and document per-deployment volume before enabling.
+**Levers already in place:** rerank is opt-in (`enable_rerank=False` by default),
+so the default path costs nothing. The dogfooding data tells us whether to keep it
+opt-in per deployment or raise volume safely under the cap.
 
 ---
 
@@ -156,7 +149,7 @@ hits; optional reinforce adds a bounded bonus.
 
 ## Open items
 
-- Verify the live Cohere Rerank 3.5 rate in the Bedrock pricing console before
-  enabling rerank in any deployment (Price List API does not expose it).
+- Run the rerank cost dogfooding pass; record observed spend and % of cap from
+  real usage (Price List API does not expose rerank rates).
 - Bound `linked_ids` length against the 2048-byte filterable cap; pick the limit.
 - Decide `reinforce` surface: standalone verb vs. flag on an existing verb.
