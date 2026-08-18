@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from enum import Enum
 from typing import Any, Protocol
 
@@ -10,6 +11,11 @@ class RankMode(str, Enum):
     SEMANTIC = "semantic"
     BALANCED = "balanced"
     PROCEDURAL = "procedural"
+
+
+POPULARITY_WEIGHT = 0.02
+POPULARITY_MAX = 0.04
+POPULARITY_HALFLIFE_DAYS = 30.0
 
 
 def parse_rank_mode(value: str) -> RankMode:
@@ -65,6 +71,14 @@ def _base_score(hit: RankableHit, mode: RankMode, now: int) -> float:
             score += 0.05 * float(confidence)
         except (TypeError, ValueError):
             pass
+
+    use_count = int(md.get("use_count", 0) or 0)
+    if use_count > 0:
+        last_used = int(md.get("last_used_at", 0) or 0)
+        age_days = max(0.0, (now - last_used) / 86400) if last_used else 0.0
+        decay = 0.5 ** (age_days / POPULARITY_HALFLIFE_DAYS)
+        boost = min(POPULARITY_MAX, POPULARITY_WEIGHT * math.log1p(use_count) * decay)
+        score += boost
 
     return score
 
