@@ -51,6 +51,7 @@ _READ_ONLY_VERBS = (
     "get_memory",
     "whoami",
     "galaxy_search",
+    "linked_by",
 )
 
 
@@ -121,6 +122,15 @@ _METADATA_SCHEMA: dict[str, Any] = {
         "parent_key": {
             "type": "string",
             "description": "Parent document key when memory_type=chunk (V-49).",
+        },
+        "linked_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "canonical_ids of memories this one is EVIDENCE FROM / supports-from. "
+                "Use for decisions that rest on facts; enables 'what depends on this?' "
+                "reverse lookup via linked_by."
+            ),
         },
         "canonical_id": {"type": "string", "description": "Explicit canonical group id (usually let the client derive it)."},
     },
@@ -265,6 +275,10 @@ def _h_expand_cites(client: MemoryClient, a: dict[str, Any]) -> Any:
             max_tokens=a.get("max_tokens"),
         )
     )
+
+
+def _h_linked_by(client: MemoryClient, a: dict[str, Any]) -> Any:
+    return _dump(client.linked_by(a["canonical_id"], index=a.get("index")))
 
 
 def _h_galaxy_search(client: MemoryClient, a: dict[str, Any]) -> Any:
@@ -527,6 +541,24 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
                 "required": ["keys"],
             },
             handler=_h_expand_cites,
+            allowed_indexes=allowed,
+        ),
+        MemoryTool(
+            name="linked_by",
+            description=(
+                "Reverse edge: list active memories whose linked_ids contains the given "
+                "canonical_id. Answers 'what decisions depend on this fact?' before you "
+                "supersede or retract it."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "canonical_id": {"type": "string", "description": "The fact's canonical_id."},
+                    "index": {"type": "string"},
+                },
+                "required": ["canonical_id"],
+            },
+            handler=_h_linked_by,
             allowed_indexes=allowed,
         ),
         MemoryTool(

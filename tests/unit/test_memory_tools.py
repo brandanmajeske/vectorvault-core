@@ -24,7 +24,7 @@ SHARED = "shared-team-memory"
 META = {"team_id": "research-alpha", "task_id": "q2", "memory_type": "semantic"}
 TOOL_NAMES = {
     "retrieve_memory", "retrieve_pack", "hydrate_memory", "fetch_working_set", "expand_cites",
-    "galaxy_search", "whoami",
+    "galaxy_search", "whoami", "linked_by",
     "pin_working_set", "store_memory", "list_memories", "restore_memory", "get_memory", "archive_memory",
 }
 
@@ -65,7 +65,7 @@ def test_auditor_gets_read_only_surface_across_all_indexes(client):
     assert set(tools) == {
         "whoami",
         "retrieve_memory", "retrieve_pack", "hydrate_memory", "fetch_working_set",
-        "expand_cites", "galaxy_search", "list_memories", "get_memory",
+        "expand_cites", "galaxy_search", "list_memories", "get_memory", "linked_by",
     }
     assert tools["retrieve_memory"].input_schema["properties"]["index"]["enum"] == [
         SHARED, "private-planner", "private-researcher",
@@ -78,6 +78,17 @@ def test_unknown_role_rejected(client):
 
 
 # --- format adapters ------------------------------------------------------------
+
+
+def test_metadata_schema_documents_linked_ids(client):
+    tools = create_memory_tools("planner", client)
+    store = next(t for t in tools if t.name == "store_memory")
+    assert "linked_ids" in store.input_schema["properties"]["metadata"]["properties"]
+
+
+def test_linked_by_is_read_only_verb(client):
+    tools = create_memory_tools("auditor", client)
+    assert any(t.name == "linked_by" for t in tools)  # available to read-only auditor
 
 
 def test_to_anthropic_shape(client):
