@@ -57,7 +57,7 @@ AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv.py <command> [args]
 |---|---|
 | `store "<content>" --team T --task K --type semantic` | Store a new fact/decision/summary. |
 | `store ... --supersedes <key>` | **Correct** an existing memory (creates v2, retires v1). |
-| `retrieve "<query>" [--task K] [--top-k 5]` | Semantic search (returns the latest version of each fact). |
+| `retrieve "<query>" [--task K] [--top-k 5] [--rerank]` | Semantic search (returns the latest version of each fact). `--rerank` opts into Cohere Rerank via Bedrock (~$0.002/query, default off; needs `bedrock:Rerank`). |
 | `list --task K [--type T] [--status active]` | Exact/scoped listing (not semantic) via the index. |
 | `list --canonical <cid>` | Look up one canonical group. |
 | `get <key>` | Fetch one memory by exact key. |
