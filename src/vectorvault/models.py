@@ -109,6 +109,7 @@ NON_FILTERABLE_KEYS: tuple[str, ...] = (
 
 FILTERABLE_MAX_BYTES = 2048  # S3 Vectors per-vector filterable cap (design-doc §2)
 ID_MAX_LEN = 128  # canonical_id and other IDs are identifiers, not prose (PR 1 risk note)
+LINKED_IDS_MAX = 32  # bounded so linked_ids stays within the 2048-byte filterable cap
 
 
 class MemoryMetadata(BaseModel):
@@ -148,6 +149,20 @@ class MemoryMetadata(BaseModel):
             raise ValueError(f"{info.field_name} must be non-empty")
         if len(v) > ID_MAX_LEN:
             raise ValueError(f"{info.field_name} exceeds {ID_MAX_LEN} chars (IDs must be short)")
+        return v
+
+    @field_validator("linked_ids")
+    @classmethod
+    def _linked_ids_valid(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        if len(v) > LINKED_IDS_MAX:
+            raise ValueError(f"linked_ids has {len(v)} ids, exceeds {LINKED_IDS_MAX}")
+        for item in v:
+            if not item or not item.strip():
+                raise ValueError("linked_ids elements must be non-empty")
+            if len(item) > ID_MAX_LEN:
+                raise ValueError(f"linked_ids element exceeds {ID_MAX_LEN} chars")
         return v
 
     @model_validator(mode="after")
