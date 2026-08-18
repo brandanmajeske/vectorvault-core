@@ -95,6 +95,7 @@ FILTERABLE_KEYS: tuple[str, ...] = (
     "canonical_id",
     "version",
     "parent_key",
+    "linked_ids",
 )
 NON_FILTERABLE_KEYS: tuple[str, ...] = (
     "content",
@@ -129,6 +130,7 @@ class MemoryMetadata(BaseModel):
     canonical_id: str
     version: int = Field(default=1, ge=1)
     parent_key: str | None = None
+    linked_ids: list[str] | None = None
 
     # Non-filterable
     content: str | None = None
