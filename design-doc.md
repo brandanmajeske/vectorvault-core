@@ -111,6 +111,7 @@ Non-filterable metadata keys **must be configured when the index is created** an
 | `canonical_id` | string | Dedup / supersession grouping |
 | `version` | number | Monotonic version within canonical group |
 | `parent_key` | string | Parent vector key for document chunks |
+| `linked_ids` | list[string] | `canonical_id`s this memory is evidence from — the directional "supports" edge (V-52) |
 
 **Non-filterable metadata** (≤ 40 KB total per vector, including filterable):
 | Key | Purpose |
@@ -261,6 +262,8 @@ Query → Collapse → Context Budget
 **Rerank (opt-in V-51)**: Default off. When `enable_rerank=true` on `retrieve_memory`, collapsed hits (max 10) are re-ordered via Cohere Rerank 3.5 (`cohere.rerank-v3-5:0`, Bedrock `Rerank` API) before the context budget — ~**$0.002/query** ($2.00/1K). Skips metadata `rank_mode` for that call. Emits `RerankInvocations` CloudWatch metric. Planner/researcher IAM includes `bedrock:Rerank`.
 
 **Rerank (removed from v1 default — cost)**: A cross-encoder rerank stage was evaluated for this pipeline and removed from the default path. Verified Bedrock pricing: Cohere Rerank 3.5 costs **$2.00 per 1,000 queries**, ~$3,000/month at the design volume of 50K queries/day — roughly 250× the rest of the system. Write-path dedup and read collapse already remove the duplicate/near-duplicate noise rerank was meant to address. V-51 restores rerank as opt-in per-call only.
+
+**Supports links (V-52)**: `store_memory` accepts a new filterable metadata key, `linked_ids` — a list of `canonical_id`s that this memory is evidence from (the directional "supports" edge), bounded to `LINKED_IDS_MAX` (32) entries and still subject to the 2,048-byte filterable metadata cap. On supersede, `linked_ids` carries forward to the new version unless the caller supplies new ones. Forward traversal reuses `expand_cites`, which now also follows `linked_ids` (resolving each `canonical_id` to its latest active vector key) alongside `supersedes`/`parent_key`/inline `mem_…` refs. Reverse traversal is a new read-only verb, `linked_by(canonical_id)`, listing active memories whose `linked_ids` contains the given `canonical_id` — "what depends on this fact?" before superseding or retracting it; like `list_memories`' filtered fallback, it is a similarity-ordered, `page_size`-bounded query (native S3 Vectors metadata filter via `QueryVectors`), not an exhaustive true-list. See `docs/superpowers/specs/2026-08-07-vectorvault-lookup-enhancements-design.md` (PR A) for the full design.
 
 ### 4.2 Embedding Cache
 

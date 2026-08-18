@@ -356,12 +356,13 @@ read/write that tenant's corpus.
 | `retrieve_memory` | `query`, `filters`, `top_k`, `detail_level` (default `summary`), `hydrate_keys`, `enable_rerank` | Semantic search (meaning); summary-first by default; opt-in Cohere rerank (~$0.002/query) |
 | `hydrate_memory` | `keys`, `max_keys` (default 8) | Explicit full-body fetch for cited keys after summary retrieve |
 | `fetch_working_set` | `name` and/or `keys`, `team_id`, `max_tokens` | Exact key batch in stable order — use for peer cites / Waypoint `spec_vault_keys` |
-| `expand_cites` | `keys`, `depth` (default 1), `max_keys` | Follow `supersedes`, `parent_key`, inline `mem_…` refs |
+| `expand_cites` | `keys`, `depth` (default 1), `max_keys` | Follow `supersedes`, `parent_key`, `linked_ids`, inline `mem_…` refs |
 | `galaxy_search` | `q`, `top_k` (1–25), `team_id`, `task_id`, `direct` | Exploration/discovery — not session bootstrap; proxies galaxyd when up |
 | `pin_working_set` | `name`, `team_id`, `keys` or `source_task_id`, `ttl_s` | Pin an ordered slice for peer handoff |
 | `retrieve_pack` | `pack` and/or `task_ids`, `team_id`, `max_tokens` | Session bootstrap — exact pack fetch, no embedding |
 | `store_memory` | `content`, `metadata`, `supersedes_key`, `mode` | Add a fact/decision; correct one via `supersedes_key` |
 | `list_memories` | `filters`, `page_size` | Exact/scoped listing by `task_id`/`canonical_id` (not semantic) |
+| `linked_by` | `canonical_id`, `index` (optional), `page_size` (default 100) | Reverse edge: active memories whose `linked_ids` contains the given `canonical_id` — "what depends on this fact?" |
 | `get_memory` | `key` | Fetch one memory by exact key |
 | `archive_memory` | `key` | Retract a wrong memory (stops surfacing) |
 | `restore_memory` | `key` | Undo a bad correction or archive |
