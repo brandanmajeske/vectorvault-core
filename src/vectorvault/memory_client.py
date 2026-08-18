@@ -518,6 +518,17 @@ class MemoryClient:
             used += tokens
         return HydrateResult(memories=memories, tokens_used=used, missing_keys=missing)
 
+    def reinforce_memory(self, key: str, index: str | None = None) -> dict:
+        """Optional explicit 'this was useful' boost. Best-effort; never required."""
+        index = index or self._config.shared_index
+        found = self._get_vectors(index, [key])
+        if not found:
+            raise ValueError(f"key not found: {key}")
+        cid = found[0].metadata.get("canonical_id")
+        if cid:
+            self._canonical.record_use(cid, int(self._clock()))
+        return {"key": key, "canonical_id": cid, "reinforced": True}
+
     # --- retrieve_pack (exact bootstrap bundles, V-43) ---------------------------
 
     def retrieve_pack(

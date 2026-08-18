@@ -482,6 +482,24 @@ def test_hydrate_memory_records_use(client, fakes):
     spy.assert_called_once_with("dec:1", FIXED_NOW)
 
 
+def test_reinforce_records_use(client, fakes):
+    key = "mem_planner_q2_deadbeefdeadbeef_v1"
+    meta = _hit(key, canonical_id="dec:1", content_summary="brief")["metadata"]
+    fakes["s3v"].vectors[(SHARED, key)] = {"data": {"float32": []}, "metadata": meta}
+
+    spy = MagicMock()
+    client._canonical.record_use = spy
+
+    out = client.reinforce_memory(key)
+    assert out == {"key": key, "canonical_id": "dec:1", "reinforced": True}
+    spy.assert_called_once_with("dec:1", FIXED_NOW)
+
+
+def test_reinforce_missing_key_raises(client, fakes):
+    with pytest.raises(ValueError):
+        client.reinforce_memory("missing-key")
+
+
 def test_summary_retrieve_does_not_record_use(client, fakes):
     fakes["s3v"].query_hits = [
         _hit("k", canonical_id="dec:1", distance=0.1, content_summary="decision X"),
