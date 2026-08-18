@@ -388,6 +388,27 @@ def test_retrieve_budget_substitutes_summary_and_limits_full_fetch(client, fakes
     assert out[2].content == "s2"  # beyond rank 2 -> summary only
 
 
+def test_retrieve_budget_demoted_record_does_not_record_use(client, fakes):
+    big = "A" * 400  # ~100 tokens
+    fakes["s3v"].query_hits = [
+        _hit("r0", canonical_id="c0", distance=0.1, content=big, content_summary="s0"),
+        _hit("r1", canonical_id="c1", distance=0.2, content="B" * 400, content_summary="s1"),
+        _hit("r2", canonical_id="c2", distance=0.3, content="C" * 400, content_summary="s2"),
+    ]
+    spy = MagicMock()
+    client._canonical.record_use = spy
+
+    out = client.retrieve_memory("q", max_tokens=120, detail_level="standard")
+    assert out[0].content == big  # top result: stays hydrated
+    assert out[0].hydrated is True
+    assert out[1].content == "s1"  # budget tight -> demoted to summary
+    assert out[1].hydrated is False
+
+    # Only the record that stayed hydrated counts as usage; the budget-demoted
+    # record (r1/c1) must NOT be counted even though it started out hydrated.
+    spy.assert_called_once_with("c0", FIXED_NOW)
+
+
 def test_retrieve_full_content_fetched_only_for_top_two(client, fakes):
     hits = []
     for i in range(3):
