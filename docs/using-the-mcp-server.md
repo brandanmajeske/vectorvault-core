@@ -34,8 +34,8 @@ and silently goes stale as the repo moves.
 ```bash
 python -m venv ~/.venvs/vectorvault
 ~/.venvs/vectorvault/bin/pip install -e "<repo>[mcp]"     # editable: tracks the checkout
-aws sso login --profile bmaj                  # AWS creds (swap in your own profile)
-aws sts get-caller-identity --profile bmaj    # confirm the token is live
+aws sso login --profile <your-profile>                  # AWS creds (swap in your own profile)
+aws sts get-caller-identity --profile <your-profile>    # confirm the token is live
 ```
 
 The canonical server command used throughout this guide:
@@ -76,7 +76,7 @@ The real production path: you ask in English, Claude calls the memory tools over
 
 ```bash
 claude mcp add vectorvault \
-  -e AWS_PROFILE=bmaj \
+  -e AWS_PROFILE=<your-profile> \
   -e VECTORVAULT_ROLE=planner \
   -e VECTORVAULT_AGENT_ID=claude-vv \
   -- ~/.venvs/vectorvault/bin/vectorvault-mcp
@@ -151,7 +151,7 @@ asyncio.run(main())
 ```
 
 ```bash
-AWS_PROFILE=bmaj .venv/bin/python mcp_probe.py
+AWS_PROFILE=<your-profile> .venv/bin/python mcp_probe.py
 ```
 
 You'll see the server announce itself, advertise its six tools, and return the UniRGB
@@ -163,7 +163,7 @@ memories — the same thing Claude does in Path A, just visible on the wire.
 
 ```bash
 grok mcp add --scope project \
-  -e AWS_PROFILE=bmaj -e VECTORVAULT_ROLE=planner -e VECTORVAULT_AGENT_ID=grok-vv \
+  -e AWS_PROFILE=<your-profile> -e VECTORVAULT_ROLE=planner -e VECTORVAULT_AGENT_ID=grok-vv \
   vectorvault -- ~/.venvs/vectorvault/bin/vectorvault-mcp
 
 grok                            # then ask the same UniRGB questions
@@ -191,7 +191,7 @@ pip install -e ".[mcp,e2e]"
 ```
 
 Save as `gemma_mcp.py` and run from the repo root
-(`AWS_PROFILE=bmaj .venv/bin/python gemma_mcp.py`):
+(`AWS_PROFILE=<your-profile> .venv/bin/python gemma_mcp.py`):
 
 ```python
 """Drive local Gemma (Ollama) through VectorVault's tools, sourced from the MCP server.
@@ -286,7 +286,7 @@ project. From any directory:
 ```bash
 cd ~/Projects/my-new-thing          # empty project, unrelated to VectorVault
 claude mcp add vectorvault \
-  -e AWS_PROFILE=bmaj -e AWS_REGION=us-west-2 \
+  -e AWS_PROFILE=<your-profile> -e AWS_REGION=us-west-2 \
   -e VECTORVAULT_ROLE=researcher -e VECTORVAULT_AGENT_ID=claude-mynewthing \
   -- ~/.venvs/vectorvault/bin/vectorvault-mcp
 claude mcp list                     # vectorvault - ✓ Connected
@@ -306,7 +306,7 @@ upgrades every project's server at once (sessions pick it up on their next MCP r
 ### Another machine
 
 Clone the repo (or install from the git URL), create the same `~/.venvs/vectorvault`
-editable install from Step 0, and `aws sso login --profile bmaj` so credentials point at
+editable install from Step 0, and `aws sso login --profile <your-profile>` so credentials point at
 the same account.
 
 ### Make it project-scoped (optional)
@@ -320,7 +320,7 @@ instead of registering globally — Claude Code auto-loads it:
     "vectorvault": {
       "command": "/home/<you>/.venvs/vectorvault/bin/vectorvault-mcp",
       "env": {
-        "AWS_PROFILE": "bmaj",
+        "AWS_PROFILE": "<your-profile>",
         "AWS_REGION": "us-west-2",
         "VECTORVAULT_ROLE": "researcher",
         "VECTORVAULT_AGENT_ID": "claude-mynewthing"
@@ -423,7 +423,7 @@ memory; scope it and you stay within one tenant's corpus.
 |---|---|
 | `claude mcp list` shows ✗ / failed to connect | Path to `vectorvault-mcp` must be **absolute** (canonical: `~/.venvs/vectorvault/bin/vectorvault-mcp`); confirm the Step 0 install and that `AWS_PROFILE` is set in the server `env`. |
 | Server rejects a role/feature that's in the docs (e.g. `auditor`) | The global venv was installed **non-editable** and snapshots old code. Reinstall editable: `~/.venvs/vectorvault/bin/pip install -e "<repo>[mcp]"` — then upgrades are just `git pull`. |
-| `Token has expired` / `sso` errors in tool results | `aws sso login --profile bmaj` — **that's it; no restart.** The server's role credentials auto-refresh (`RefreshableCredentials`), and each refresh re-reads the SSO token cache, so the next tool call heals a still-running server. Manual lever if ever needed: `/mcp` → reconnect (Claude Code) or restart the session (Grok/Codex). |
+| `Token has expired` / `sso` errors in tool results | `aws sso login --profile <your-profile>` — **that's it; no restart.** The server's role credentials auto-refresh (`RefreshableCredentials`), and each refresh re-reads the SSO token cache, so the next tool call heals a still-running server. Manual lever if ever needed: `/mcp` → reconnect (Claude Code) or restart the session (Grok/Codex). |
 | `retrieve_memory` returns nothing | Check the `filters` (`team_id`/`task_id`) match what was stored; try without filters; expired/superseded/archived memories don't surface. |
 | Tool call denied on a private index | A role reaches only `shared-team-memory` + its own private index — index isolation working as intended. |
 | Agent won't call the tool | Make sure it's approved/allowlisted (`--allowedTools mcp__vectorvault__*` for Claude, `--allow mcp__vectorvault__<tool>` for Grok in headless mode). |
@@ -452,7 +452,7 @@ The two failure modes we've actually hit:
 
   ```toml
   [mcp_servers.vectorvault.env]
-  AWS_PROFILE = "bmaj"
+  AWS_PROFILE = "<your-profile>"
   VECTORVAULT_ROLE = "researcher"
   VECTORVAULT_AGENT_ID = "grok-vv"
   ```

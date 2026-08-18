@@ -9,7 +9,7 @@ tool schemas and dispatch are identical to the CLI and framework adapters.
 Install the optional dependency and run over stdio::
 
     pip install -e '.[mcp]'
-    AWS_PROFILE=bmaj vectorvault-mcp        # console script; == python -m vectorvault.mcp_server
+    AWS_PROFILE=<your-profile> vectorvault-mcp        # console script; == python -m vectorvault.mcp_server
 
 Configuration (environment):
     VECTORVAULT_ROLE            planner | researcher | auditor | none   (default: planner;
@@ -24,7 +24,7 @@ Example Claude Code / Desktop MCP config (``.mcp.json``)::
 
     {"mcpServers": {"vectorvault": {
         "command": "/path/to/repo/.venv/bin/vectorvault-mcp",
-        "env": {"AWS_PROFILE": "bmaj", "VECTORVAULT_ROLE": "planner",
+        "env": {"AWS_PROFILE": "<your-profile>", "VECTORVAULT_ROLE": "planner",
                 "VECTORVAULT_AGENT_ID": "claude-vv"}}}}
 """
 from __future__ import annotations

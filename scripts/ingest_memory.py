@@ -11,7 +11,7 @@ distinct-but-similar chunks all land instead of tripping near-duplicate dedup.
     # preview (no writes):
     ingest_memory.py ~/.claude/projects/-home-…-unirgb/memory --team unirgb --dry-run
     # for real, attributed to the planner role:
-    AWS_PROFILE=bmaj .venv/bin/python scripts/ingest_memory.py <dir> \
+    AWS_PROFILE=<your-profile> .venv/bin/python scripts/ingest_memory.py <dir> \
         --team unirgb --role planner --agent-id ingest-bot
 
 Keyless — AWS credentials only (embeddings run on Bedrock via IAM).

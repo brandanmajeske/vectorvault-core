@@ -25,7 +25,7 @@ browser both load the page the daemon serves, so nothing can drift between them:
 ## Generate it (any time, from the live vault)
 
 ```bash
-AWS_PROFILE=bmaj .venv/bin/python scripts/vv_galaxy.py   # generate + serve http://127.0.0.1:8777
+AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv_galaxy.py   # generate + serve http://127.0.0.1:8777
 ```
 
 The galaxy is generated fresh from the vault, then **served over HTTP on port 8777**
@@ -41,7 +41,7 @@ vv --galaxy            # same thing, from anywhere (== `vv galaxy`)
 
 One-time setup: `ln -s <repo>/scripts/vv ~/.local/bin/vv`. The wrapper uses the repo
 venv, and if `AWS_PROFILE` isn't set it sources an untracked `.vvrc` at the repo root
-(e.g. `export AWS_PROFILE=bmaj`) — per-machine default, nothing hardcoded in git.
+(e.g. `export AWS_PROFILE=<your-profile>`) — per-machine default, nothing hardcoded in git.
 All `vv_galaxy` flags pass through: `vv --galaxy --mode both --no-open`.
 
 Options:
@@ -91,7 +91,7 @@ The units use the canonical checkout at `~/Projects/VectorVault`, set only
 `AWS_PROFILE=galaxy-daemon` and `AWS_REGION=us-west-2`, and keep all credentials out of
 the repository and unit files. The daemon user can only assume `MemoryAuditorRole`,
 and the role trust pins its session name to `galaxy-daemon`. Temporary auditor
-credentials refresh automatically, independently of the human `bmaj` SSO session;
+credentials refresh automatically, independently of the human `<your-profile>` SSO session;
 letting human SSO expire does not stop the service.
 
 Endpoints:
@@ -208,7 +208,7 @@ operation failed. Follow the AWS IAM
 including `list-access-keys` and `delete-access-key`, before the stack operation.
 
 The legacy static `--no-serve` generator resolves SSM configuration before it assumes
-the auditor role, so it remains a `bmaj`/human-admin path. The permanent served path is
+the auditor role, so it remains a `<your-profile>`/human-admin path. The permanent served path is
 `--daemon`: it bootstraps from the locked daemon user, assumes the auditor with
 refreshable credentials, then reads configuration under that read-only role.
 
@@ -247,7 +247,7 @@ itself and renders its own diagnosis, naming the fix:
 |---|---|
 | daemon not running | `systemctl --user start vv-galaxyd.service` |
 | `vv.local` will not resolve | use `127.0.0.1:8777`, or install `nss-mdns` |
-| the daemon's SSO has expired | `aws sso login --profile bmaj` |
+| the daemon's SSO has expired | `aws sso login --profile <your-profile>` |
 | something answered, but it is not a galaxy | a proxy or login page is in the way |
 
 The last one is the interesting case: the probe asserts the **payload**, not the HTTP
