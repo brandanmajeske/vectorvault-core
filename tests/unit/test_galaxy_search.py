@@ -1,10 +1,27 @@
-"""Unit tests for scripts/galaxy_search.py — the galaxy search backend and its
-pure HTTP route handlers. Mocked client, no AWS, no socket."""
+"""Unit tests for the galaxy search backends. Two independent surfaces:
+
+* ``scripts/galaxy_search.py`` — the standalone galaxy search backend and its
+  pure HTTP route handlers (``GalaxySearch``, ``handle_search``, ``handle_get``).
+* ``vectorvault.galaxy_search`` — the MCP search helper (V-50): ``galaxy_search``
+  and ``parse_galaxy_search_params``, with daemon-or-direct routing.
+
+Mocked clients, no AWS, no socket."""
 
 from __future__ import annotations
 
 import importlib.util
+import json
+from dataclasses import dataclass
 from pathlib import Path
+
+import pytest
+
+from vectorvault.galaxy_search import (
+    galaxy_search as mcp_galaxy_search,
+)
+from vectorvault.galaxy_search import (
+    parse_galaxy_search_params,
+)
 
 _SPEC = importlib.util.spec_from_file_location(
     "galaxy_search", Path(__file__).resolve().parents[2] / "scripts" / "galaxy_search.py")
@@ -12,6 +29,9 @@ galaxy_search = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(galaxy_search)
 
 GalaxySearch = galaxy_search.GalaxySearch
+
+
+# --- scripts/galaxy_search.py: backend + HTTP route handlers --------------------
 
 
 class _Rec:
@@ -127,3 +147,82 @@ def test_handle_get_statuses():
     assert status == 400 and "error" in body
     status, body = handle_get(None, "mem_a")             # no backend
     assert status == 503 and "error" in body
+
+
+# --- vectorvault.galaxy_search: MCP search helper (V-50) ------------------------
+
+
+@dataclass
+class _McpRec:
+    key: str
+    distance: float
+    content: str
+    content_summary: str | None
+    memory_type: str
+    task_id: str
+    team_id: str
+    hydrated: bool = False
+
+
+class _McpFakeClient:
+    def retrieve_memory(self, query, *, filters=None, top_k=5, detail_level="summary", rank_mode="semantic"):
+        assert detail_level == "summary"
+        return [
+            _McpRec("mem_a_v1", 0.2, "body", "summary a", "semantic", "q2", "team-a"),
+        ]
+
+
+def test_parse_galaxy_search_params_bounds():
+    p = parse_galaxy_search_params(q="hello", top_k=25, team_id="t")
+    assert p.top_k == 25
+    with pytest.raises(ValueError):
+        parse_galaxy_search_params(q="x", top_k=0)
+    with pytest.raises(ValueError):
+        parse_galaxy_search_params(q="x", top_k=26)
+
+
+def test_galaxy_search_direct_uses_retrieve():
+    out = mcp_galaxy_search(
+        _McpFakeClient(),
+        parse_galaxy_search_params(q="revenue"),
+        prefer_daemon=False,
+    )
+    assert out.source == "retrieve"
+    assert out.results[0]["key"] == "mem_a_v1"
+    assert out.results[0]["hydrated"] is False
+
+
+def test_galaxy_search_daemon_unreachable_falls_back(monkeypatch):
+    def _fail(*_a, **_k):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr("urllib.request.urlopen", _fail)
+    out = mcp_galaxy_search(
+        _McpFakeClient(),
+        parse_galaxy_search_params(q="revenue"),
+        galaxyd_url="http://127.0.0.1:8777",
+    )
+    assert out.source == "retrieve"
+
+
+def test_galaxy_search_daemon_success(monkeypatch):
+    payload = json.dumps({"results": [{"key": "k1", "distance": 0.1, "text": "hi", "type": "semantic"}]}).encode()
+
+    class _Resp:
+        def read(self):
+            return payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *_a, **_k: _Resp())
+    out = mcp_galaxy_search(
+        _McpFakeClient(),
+        parse_galaxy_search_params(q="revenue"),
+        galaxyd_url="http://127.0.0.1:8777",
+    )
+    assert out.source == "galaxyd"
+    assert out.results[0]["key"] == "k1"

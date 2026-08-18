@@ -74,6 +74,12 @@ class StoreAction(str, Enum):
     DUPLICATE_DETECTED = "duplicate_detected"
 
 
+class DetailLevel(str, Enum):
+    SUMMARY = "summary"
+    STANDARD = "standard"
+    FULL = "full"
+
+
 # --- Schema split (must match the index's nonFilterableMetadataKeys) -------------
 
 FILTERABLE_KEYS: tuple[str, ...] = (
@@ -89,6 +95,7 @@ FILTERABLE_KEYS: tuple[str, ...] = (
     "canonical_id",
     "version",
     "parent_key",
+    "linked_ids",
     "stored_by",
 )
 NON_FILTERABLE_KEYS: tuple[str, ...] = (
@@ -103,6 +110,8 @@ NON_FILTERABLE_KEYS: tuple[str, ...] = (
 
 FILTERABLE_MAX_BYTES = 2048  # S3 Vectors per-vector filterable cap (design-doc §2)
 ID_MAX_LEN = 128  # canonical_id and other IDs are identifiers, not prose (PR 1 risk note)
+LINKED_IDS_MAX = 32  # count bound on linked_ids; the FILTERABLE_MAX_BYTES validator is the
+# real cap enforcer (32 ids x ID_MAX_LEN can still exceed 2048 bytes and is rejected at store)
 
 
 class MemoryMetadata(BaseModel):
@@ -124,6 +133,7 @@ class MemoryMetadata(BaseModel):
     canonical_id: str
     version: int = Field(default=1, ge=1)
     parent_key: str | None = None
+    linked_ids: list[str] | None = None
     # Real AWS principal that stored this, derived at assume time (email/username via
     # GetCallerIdentity) — NOT self-asserted, unlike agent_id. Filterable and additive
     # (design-doc §5); None on ambient-cred writes where no principal is derived.
@@ -145,6 +155,20 @@ class MemoryMetadata(BaseModel):
             raise ValueError(f"{info.field_name} must be non-empty")
         if len(v) > ID_MAX_LEN:
             raise ValueError(f"{info.field_name} exceeds {ID_MAX_LEN} chars (IDs must be short)")
+        return v
+
+    @field_validator("linked_ids")
+    @classmethod
+    def _linked_ids_valid(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        if len(v) > LINKED_IDS_MAX:
+            raise ValueError(f"linked_ids has {len(v)} ids, exceeds {LINKED_IDS_MAX}")
+        for item in v:
+            if not item or not item.strip():
+                raise ValueError("linked_ids elements must be non-empty")
+            if len(item) > ID_MAX_LEN:
+                raise ValueError(f"linked_ids element exceeds {ID_MAX_LEN} chars")
         return v
 
     @model_validator(mode="after")
@@ -195,6 +219,7 @@ class MemoryRecord(BaseModel):
     content_ref: str | None = None
     content_hash: str | None = None
     distance: float | None = None  # query cosine distance (similarity = 1 - distance)
+    hydrated: bool = False  # True when ``content`` was resolved from inline/S3 full body
 
     @classmethod
     def from_vector(cls, key: str, metadata: dict[str, Any], distance: float | None = None) -> MemoryRecord:
@@ -221,6 +246,55 @@ class MemoryRecord(BaseModel):
         )
 
 
+class HydrateResult(BaseModel):
+    """Return contract for ``hydrate_memory`` (V-44 explicit full-body fetch)."""
+
+    memories: list[MemoryRecord] = Field(default_factory=list)
+    tokens_used: int = 0
+    missing_keys: list[str] = Field(default_factory=list)
+
+
+class RetrievePackResult(BaseModel):
+    """Return contract for ``retrieve_pack`` (exact bootstrap bundles, V-43)."""
+
+    pack: str | None = None
+    task_ids: list[str] = Field(default_factory=list)
+    memories: list[MemoryRecord] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    missing_task_ids: list[str] = Field(default_factory=list)
+    tokens_used: int = 0
+
+
+class PinWorkingSetResult(BaseModel):
+    """Return contract for ``pin_working_set`` (V-47)."""
+
+    name: str
+    key: str
+    keys: list[str] = Field(default_factory=list)
+    expires_at: int | None = None
+    action: StoreAction
+
+
+class FetchWorkingSetResult(BaseModel):
+    """Return contract for ``fetch_working_set`` (V-47)."""
+
+    name: str | None = None
+    keys: list[str] = Field(default_factory=list)
+    memories: list[MemoryRecord] = Field(default_factory=list)
+    missing_keys: list[str] = Field(default_factory=list)
+    tokens_used: int = 0
+
+
+class ExpandCitesResult(BaseModel):
+    """Return contract for ``expand_cites`` (V-47)."""
+
+    seed_keys: list[str] = Field(default_factory=list)
+    memories: list[MemoryRecord] = Field(default_factory=list)
+    expanded_keys: list[str] = Field(default_factory=list)
+    truncated: bool = False
+    tokens_used: int = 0
+
+
 class StoreResult(BaseModel):
     """Return contract for ``store_memory`` (design-doc §4 / claude-review Q10)."""
 
@@ -230,3 +304,6 @@ class StoreResult(BaseModel):
     canonical_id: str | None = None
     content_ref: str | None = None
     near_duplicates: list[MemoryRecord] = Field(default_factory=list)
+    # Soft-warn surface (V-46): set when the write's team_id differs from the
+    # session's expected team. The write proceeds; the warning carries the remedy.
+    warning: str | None = None

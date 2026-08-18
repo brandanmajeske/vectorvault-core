@@ -53,6 +53,40 @@ class CanonicalIndex:
         except Exception:
             pass
 
+    def record_use(self, canonical_id: str, now: int) -> None:
+        """Best-effort: bump use_count and stamp last_used_at (hydration signal)."""
+        if self._table is None:
+            return
+        try:
+            self._table.update_item(
+                Key={"canonical_id": canonical_id},
+                UpdateExpression="ADD use_count :one SET last_used_at = :now",
+                ExpressionAttributeValues={":one": 1, ":now": now},
+            )
+        except Exception:
+            pass
+
+    def get_usage(self, canonical_ids: list[str]) -> dict[str, tuple[int, int]]:
+        """Best-effort batch read of (use_count, last_used_at); {} on error."""
+        if self._table is None:
+            return {}
+        try:
+            ids = [c for c in dict.fromkeys(canonical_ids) if c]
+            if not ids:
+                return {}
+            resp = self._table.meta.client.batch_get_item(
+                RequestItems={self._table.name: {"Keys": [{"canonical_id": c} for c in ids]}}
+            )
+            rows = resp.get("Responses", {}).get(self._table.name, [])
+        except Exception:
+            return {}
+        out: dict[str, tuple[int, int]] = {}
+        for r in rows:
+            cid = r.get("canonical_id")
+            if cid:
+                out[cid] = (int(r.get("use_count", 0)), int(r.get("last_used_at", 0)))
+        return out
+
     def get(self, canonical_id: str) -> dict[str, Any] | None:
         """Exact lookup by canonical_id (backs ``list_memories(canonical_id=...)``)."""
         if self._table is None:
