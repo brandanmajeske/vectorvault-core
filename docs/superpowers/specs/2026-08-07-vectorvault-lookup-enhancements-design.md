@@ -25,6 +25,13 @@ This revision records what is delivered and re-scopes only what is left.
 `detail_level` / `enable_rerank` / `rank_mode` — not the `detail` / `rerank`
 names the first draft proposed.
 
+**Forward note — Rerank 4 Fast supersedes Rerank 3.5.** Cohere Rerank 4 Fast is
+the successor to Rerank 3.5. Amazon Bedrock does not host a Rerank 4 model yet
+(the Bedrock reranking table lists only `amazon.rerank-v1:0` and
+`cohere.rerank-v3-5:0`), and VectorVault reranks keyless via Bedrock IAM. Migrate
+`RERANK_MODEL_ID` (`rerank.py`) and the IAM model ARN (`memory-stack.ts`) to the
+Rerank 4 Fast model ID once Bedrock hosts it; re-verify the query price then.
+
 **Two behavioral notes that differ from the first draft's assumptions:**
 1. Rerank **replaces** the local `rank_hits` when `enable_rerank=True` (it does
    not layer on top of the blend).
