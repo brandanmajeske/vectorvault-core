@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from vectorvault.ranking import RankMode, rank_hits
+from vectorvault.ranking import POPULARITY_MAX, RankMode, rank_hits
 
 
 @dataclass
@@ -55,3 +55,23 @@ def test_mmr_spreads_same_task_id():
     out = rank_hits(hits, RankMode.BALANCED, NOW)
     assert out[0].key == "a1"
     assert out[1].key == "other"
+
+
+def test_popularity_breaks_ties_only():
+    now = 1_000_000
+    a = _Hit("a", 0.30, {"memory_type": "semantic", "use_count": 0, "last_used_at": 0, "canonical_id": "a"})
+    b = _Hit("b", 0.30, {"memory_type": "semantic", "use_count": 50, "last_used_at": now, "canonical_id": "b"})
+    ranked = rank_hits([a, b], RankMode.BALANCED, now)
+    assert ranked[0].metadata["canonical_id"] == "b"  # popular wins the tie
+
+
+def test_popularity_cannot_override_relevance():
+    now = 1_000_000
+    close = _Hit("relevant", 0.10, {"memory_type": "semantic", "use_count": 0, "last_used_at": 0, "canonical_id": "relevant"})
+    far = _Hit("popular", 0.60, {"memory_type": "semantic", "use_count": 9999, "last_used_at": now, "canonical_id": "popular"})
+    ranked = rank_hits([close, far], RankMode.BALANCED, now)
+    assert ranked[0].metadata["canonical_id"] == "relevant"  # relevance dominates
+
+
+def test_popularity_term_is_bounded():
+    assert POPULARITY_MAX <= 0.05  # never large enough to swamp relevance (~1.0 scale)

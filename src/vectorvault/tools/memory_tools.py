@@ -264,6 +264,10 @@ def _h_archive(client: MemoryClient, a: dict[str, Any]) -> Any:
     return client.archive_memory(key=a["key"], index=a.get("index"))
 
 
+def _h_reinforce(client: MemoryClient, a: dict[str, Any]) -> Any:
+    return client.reinforce_memory(key=a["key"], index=a.get("index"))
+
+
 def _h_pin_working_set(client: MemoryClient, a: dict[str, Any]) -> Any:
     return _dump(
         client.pin_working_set(
@@ -784,6 +788,21 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
                 "required": ["key"],
             },
             handler=_h_archive,
+            allowed_indexes=allowed,
+        ),
+        MemoryTool(
+            name="reinforce",
+            description=(
+                "Optionally mark a memory as useful: bumps its usage count so it ranks "
+                "slightly higher as a tiebreaker among near-equally-relevant results. "
+                "Best-effort and never required — retrieval works without it."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {"key": {"type": "string"}, "index": idx()},
+                "required": ["key"],
+            },
+            handler=_h_reinforce,
             allowed_indexes=allowed,
         ),
     ]

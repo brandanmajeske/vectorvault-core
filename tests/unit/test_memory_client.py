@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 from conftest import FIXED_NOW
 
@@ -386,6 +388,27 @@ def test_retrieve_budget_substitutes_summary_and_limits_full_fetch(client, fakes
     assert out[2].content == "s2"  # beyond rank 2 -> summary only
 
 
+def test_retrieve_budget_demoted_record_does_not_record_use(client, fakes):
+    big = "A" * 400  # ~100 tokens
+    fakes["s3v"].query_hits = [
+        _hit("r0", canonical_id="c0", distance=0.1, content=big, content_summary="s0"),
+        _hit("r1", canonical_id="c1", distance=0.2, content="B" * 400, content_summary="s1"),
+        _hit("r2", canonical_id="c2", distance=0.3, content="C" * 400, content_summary="s2"),
+    ]
+    spy = MagicMock()
+    client._canonical.record_use = spy
+
+    out = client.retrieve_memory("q", max_tokens=120, detail_level="standard")
+    assert out[0].content == big  # top result: stays hydrated
+    assert out[0].hydrated is True
+    assert out[1].content == "s1"  # budget tight -> demoted to summary
+    assert out[1].hydrated is False
+
+    # Only the record that stayed hydrated counts as usage; the budget-demoted
+    # record (r1/c1) must NOT be counted even though it started out hydrated.
+    spy.assert_called_once_with("c0", FIXED_NOW)
+
+
 def test_retrieve_full_content_fetched_only_for_top_two(client, fakes):
     hits = []
     for i in range(3):
@@ -439,6 +462,123 @@ def test_hydrate_memory_reports_missing_keys(client, fakes):
     out = client.hydrate_memory(["missing-key"])
     assert out.memories == []
     assert out.missing_keys == ["missing-key"]
+
+
+# --- usage feedback: record_use on hydration only -------------------------------
+
+
+def test_hydrate_memory_records_use(client, fakes):
+    key = "mem_planner_q2_deadbeefdeadbeef_v1"
+    derived_key = f"{SHARED}/{key}.json"
+    fakes["s3"].objects[("content-bkt", derived_key)] = b'{"content": "full body"}'
+    meta = _hit(key, canonical_id="dec:1", content_summary="brief")["metadata"]
+    fakes["s3v"].vectors[(SHARED, key)] = {"data": {"float32": []}, "metadata": meta}
+
+    spy = MagicMock()
+    client._canonical.record_use = spy
+
+    out = client.hydrate_memory([key])
+    assert out.memories[0].hydrated is True
+    spy.assert_called_once_with("dec:1", FIXED_NOW)
+
+
+def test_reinforce_records_use(client, fakes):
+    key = "mem_planner_q2_deadbeefdeadbeef_v1"
+    meta = _hit(key, canonical_id="dec:1", content_summary="brief")["metadata"]
+    fakes["s3v"].vectors[(SHARED, key)] = {"data": {"float32": []}, "metadata": meta}
+
+    spy = MagicMock()
+    client._canonical.record_use = spy
+
+    out = client.reinforce_memory(key)
+    assert out == {"key": key, "canonical_id": "dec:1", "reinforced": True}
+    spy.assert_called_once_with("dec:1", FIXED_NOW)
+
+
+def test_reinforce_missing_key_raises(client, fakes):
+    with pytest.raises(ValueError):
+        client.reinforce_memory("missing-key")
+
+
+def test_summary_retrieve_does_not_record_use(client, fakes):
+    fakes["s3v"].query_hits = [
+        _hit("k", canonical_id="dec:1", distance=0.1, content_summary="decision X"),
+    ]
+    spy = MagicMock()
+    client._canonical.record_use = spy
+
+    out = client.retrieve_memory("decision", detail_level="summary")
+    assert out[0].hydrated is False
+    spy.assert_not_called()
+
+
+def test_apply_hydrate_keys_records_use(client, fakes):
+    key = "mem_planner_q2_deadbeefdeadbeef_v1"
+    derived_key = f"{SHARED}/{key}.json"
+    fakes["s3"].objects[("content-bkt", derived_key)] = b'{"content": "full body"}'
+    hit = _hit(key, canonical_id="dec:2", distance=0.1, content_summary="brief")
+    fakes["s3v"].query_hits = [hit]
+    fakes["s3v"].vectors[(SHARED, key)] = {"data": {"float32": []}, "metadata": hit["metadata"]}
+
+    spy = MagicMock()
+    client._canonical.record_use = spy
+
+    out = client.retrieve_memory("q", hydrate_keys=[key])
+    assert out[0].hydrated is True
+    spy.assert_called_once_with("dec:2", FIXED_NOW)
+
+
+# --- retrieve: usage attached to hits before ranking (Task 3) ------------------
+
+
+def test_retrieve_attaches_usage_to_hits_before_ranking(client, fakes, monkeypatch):
+    fakes["s3v"].query_hits = [
+        _hit("k", canonical_id="dec:1", distance=0.1, content_summary="decision X"),
+    ]
+    client._canonical.get_usage = MagicMock(return_value={"dec:1": (5, 900)})
+    client._canonical.record_use = MagicMock()
+
+    captured: list = []
+    import vectorvault.memory_client as memory_client_module
+
+    real_rank_hits = memory_client_module.rank_hits
+
+    def spy_rank_hits(hits, *args, **kwargs):
+        captured.extend(hits)
+        return real_rank_hits(hits, *args, **kwargs)
+
+    monkeypatch.setattr(memory_client_module, "rank_hits", spy_rank_hits)
+
+    client.retrieve_memory("decision")
+
+    assert len(captured) == 1
+    assert captured[0].metadata["use_count"] == 5
+    assert captured[0].metadata["last_used_at"] == 900
+
+
+def test_retrieve_defaults_usage_to_zero_when_absent(client, fakes, monkeypatch):
+    fakes["s3v"].query_hits = [
+        _hit("k", canonical_id="dec:1", distance=0.1, content_summary="decision X"),
+    ]
+    client._canonical.record_use = MagicMock()
+    # get_usage returns {} by default (no seeded usage rows).
+
+    captured: list = []
+    import vectorvault.memory_client as memory_client_module
+
+    real_rank_hits = memory_client_module.rank_hits
+
+    def spy_rank_hits(hits, *args, **kwargs):
+        captured.extend(hits)
+        return real_rank_hits(hits, *args, **kwargs)
+
+    monkeypatch.setattr(memory_client_module, "rank_hits", spy_rank_hits)
+
+    client.retrieve_memory("decision")
+
+    assert len(captured) == 1
+    assert captured[0].metadata["use_count"] == 0
+    assert captured[0].metadata["last_used_at"] == 0
 
 
 # --- retrieve: rank_mode (V-45) ------------------------------------------------

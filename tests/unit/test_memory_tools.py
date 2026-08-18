@@ -26,6 +26,7 @@ TOOL_NAMES = {
     "retrieve_memory", "retrieve_pack", "hydrate_memory", "fetch_working_set", "expand_cites",
     "galaxy_search", "whoami", "linked_by",
     "pin_working_set", "store_memory", "list_memories", "restore_memory", "get_memory", "archive_memory",
+    "reinforce",
 }
 
 
@@ -70,6 +71,16 @@ def test_auditor_gets_read_only_surface_across_all_indexes(client):
     assert tools["retrieve_memory"].input_schema["properties"]["index"]["enum"] == [
         SHARED, "private-planner", "private-researcher",
     ]
+
+
+def test_reinforce_not_available_to_auditor(client):
+    tools = create_memory_tools("auditor", client)
+    assert not any(t.name == "reinforce" for t in tools)  # mutating verb stripped
+
+
+def test_reinforce_available_to_planner(client):
+    tools = create_memory_tools("planner", client)
+    assert any(t.name == "reinforce" for t in tools)
 
 
 def test_unknown_role_rejected(client):

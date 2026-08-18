@@ -364,6 +364,7 @@ read/write that tenant's corpus.
 | `list_memories` | `filters`, `page_size` | Exact/scoped listing by `task_id`/`canonical_id` (not semantic) |
 | `linked_by` | `canonical_id`, `index` (optional), `page_size` (default 100) | Reverse edge: active memories whose `linked_ids` contains the given `canonical_id` — "what depends on this fact?" |
 | `get_memory` | `key` | Fetch one memory by exact key |
+| `reinforce` | `key`, `index` (optional) | Optional: mark a memory useful — bumps its usage count as a ranking tiebreaker; best-effort, never required |
 | `archive_memory` | `key` | Retract a wrong memory (stops surfacing) |
 | `restore_memory` | `key` | Undo a bad correction or archive |
 

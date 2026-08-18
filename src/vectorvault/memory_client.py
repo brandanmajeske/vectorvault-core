@@ -448,6 +448,17 @@ class MemoryClient:
 
         collapsed = [v[1] for v in best.values()]
         collapsed = self._promote_chunks_to_parents(index, collapsed)
+
+        # Attach usage (ephemeral, in-memory only) so rank_hits can consume it (Task 4).
+        # Best-effort — self._canonical.get_usage never raises.
+        usage = self._canonical.get_usage(
+            [h.metadata.get("canonical_id") or h.key for h in collapsed]
+        )
+        for h in collapsed:
+            uc, lu = usage.get(h.metadata.get("canonical_id") or h.key, (0, 0))
+            h.metadata["use_count"] = uc
+            h.metadata["last_used_at"] = lu
+
         if enable_rerank:
             self._metrics.count("RerankInvocations")
             ranked = rerank_hits(
@@ -501,9 +512,22 @@ class MemoryClient:
             record = MemoryRecord.from_vector(vec.key, vec.metadata)
             record.content = chosen
             record.hydrated = full is not None and chosen == full
+            if record.hydrated:
+                self._canonical.record_use(record.canonical_id, int(self._clock()))
             memories.append(record)
             used += tokens
         return HydrateResult(memories=memories, tokens_used=used, missing_keys=missing)
+
+    def reinforce_memory(self, key: str, index: str | None = None) -> dict:
+        """Optional explicit 'this was useful' boost. Best-effort; never required."""
+        index = index or self._config.shared_index
+        found = self._get_vectors(index, [key])
+        if not found:
+            raise ValueError(f"key not found: {key}")
+        cid = found[0].metadata.get("canonical_id")
+        if cid:
+            self._canonical.record_use(cid, int(self._clock()))
+        return {"key": key, "canonical_id": cid, "reinforced": True}
 
     # --- retrieve_pack (exact bootstrap bundles, V-43) ---------------------------
 
@@ -883,6 +907,8 @@ class MemoryClient:
             record = MemoryRecord.from_vector(hit.key, md, hit.distance)
             record.content = chosen
             record.hydrated = hydrated
+            if record.hydrated:
+                self._canonical.record_use(record.canonical_id, int(self._clock()))
             results.append(record)
             used += tokens
         return results
@@ -921,6 +947,7 @@ class MemoryClient:
             used += tokens - self._estimate_tokens(record.content)
             record.content = full
             record.hydrated = True
+            self._canonical.record_use(record.canonical_id, int(self._clock()))
         return results
 
     @staticmethod
