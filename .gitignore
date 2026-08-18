@@ -38,3 +38,12 @@ viz/galaxy3d/Cargo.lock
 
 # Machine-local vv defaults (e.g. AWS_PROFILE)
 .vvrc
+
+# Local Actions (act sidecar state; see README)
+.local-actions/
+.cache/
+
+# Rust build output for the desktop app (standalone crate, not in a workspace)
+apps/*/target/
+# Icon rasters are generated from the SVG master at install time (librsvg)
+assets/icons/hicolor/

@@ -1,6 +1,6 @@
 """Agent tool adapters for the shared-memory client (design-doc §4, claude-review Q6-Q10).
 
-``create_memory_tools(role, client)`` returns the six memory verbs an agent can
+``create_memory_tools(role, client)`` returns the seven memory verbs an agent can
 call. Each :class:`MemoryTool` bundles a JSON-Schema description with a handler that
 executes against the injected :class:`~vectorvault.MemoryClient`, so the same tool
 set renders for any framework:
@@ -12,10 +12,12 @@ set renders for any framework:
 
 and a tool call is run with ``execute_tool(tools, client, name, arguments)``.
 
-**Verbs** (claude-review Q7 adds get/archive to the design-doc §4 four):
-``retrieve_memory``, ``store_memory``, ``list_memories``, ``restore_memory``,
-``get_memory``, ``archive_memory``. The read-only **auditor** role gets only
-``retrieve_memory``/``list_memories``/``get_memory`` — across all three indexes.
+**Verbs** (claude-review Q7 adds get/archive to the design-doc §4 four; V-43 adds
+retrieve_pack; V-44 adds hydrate_memory; V-46 adds whoami):
+``retrieve_memory``, ``retrieve_pack``, ``hydrate_memory``, ``store_memory``, ``list_memories``,
+``restore_memory``, ``get_memory``, ``archive_memory``, ``whoami``. The read-only **auditor** role
+gets only ``retrieve_memory``/``retrieve_pack``/``hydrate_memory``/``list_memories``/``get_memory``/``whoami`` —
+across all three indexes. Every result echoes ``_meta: {agent_id, role}`` (V-46).
 
 **Credential story (Q6 / S2).** Agent processes obtain their AWS credentials by
 assuming their IAM role (published to SSM by PR 1) with ``RoleSessionName`` set to
@@ -28,17 +30,28 @@ enum below only advertises the indexes a role may touch; IAM is the real gate.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from vectorvault.config import Config
+from vectorvault.galaxy_search import galaxy_search, parse_galaxy_search_params
 from vectorvault.memory_client import MemoryClient
 
 Role = Literal["planner", "researcher", "auditor"]
 
 # Verbs the read-only auditor role gets. Everything else (store/archive/restore)
 # mutates and is stripped — matching its IAM grant (Query/Get/List, no PutVectors).
-_READ_ONLY_VERBS = ("retrieve_memory", "list_memories", "get_memory")
+_READ_ONLY_VERBS = (
+    "retrieve_memory",
+    "retrieve_pack",
+    "hydrate_memory",
+    "fetch_working_set",
+    "expand_cites",
+    "list_memories",
+    "get_memory",
+    "whoami",
+    "galaxy_search",
+)
 
 
 @dataclass(frozen=True)
@@ -55,6 +68,8 @@ class MemoryTool:
     input_schema: dict[str, Any]
     handler: Callable[[MemoryClient, dict[str, Any]], Any]
     allowed_indexes: tuple[str, ...] = field(default_factory=tuple)
+    # Role surface this tool was built for; echoed into every result's _meta (V-46).
+    role: str | None = None
 
 
 # --- Shared schema fragments ----------------------------------------------------
@@ -93,11 +108,20 @@ _METADATA_SCHEMA: dict[str, Any] = {
                 "and retrieved with an origin label so readers can down-weight it."
             ),
         },
-        "content_summary": {"type": "string", "description": "Short summary used when the context budget is tight."},
+        "content_summary": {
+            "type": "string",
+            "description": (
+                "Short summary used when the context budget is tight. Required when "
+                "content exceeds ~500 tokens or 2 KB unless mode=store_full."
+            ),
+        },
         "provenance": {"type": "string", "description": "Source tool or document."},
         "confidence": {"type": "number", "description": "Writer-asserted confidence 0..1."},
         "expires_at": {"type": "integer", "description": "Hard-TTL epoch seconds; omit for non-expiring."},
-        "parent_key": {"type": "string", "description": "Vector key of a related/containing memory."},
+        "parent_key": {
+            "type": "string",
+            "description": "Parent document key when memory_type=chunk (V-49).",
+        },
         "canonical_id": {"type": "string", "description": "Explicit canonical group id (usually let the client derive it)."},
     },
     "required": ["team_id", "task_id", "memory_type"],
@@ -113,6 +137,7 @@ _FILTERS_SCHEMA: dict[str, Any] = {
         "origin": {"type": "string"},
         "agent_id": {"type": "string"},
         "canonical_id": {"type": "string"},
+        "parent_key": {"type": "string", "description": "List chunks belonging to a document parent (V-49)."},
     },
     "additionalProperties": True,
 }
@@ -138,6 +163,34 @@ def _h_retrieve(client: MemoryClient, a: dict[str, Any]) -> Any:
             filters=a.get("filters"),
             top_k=int(a.get("top_k", 5)),
             index=a.get("index"),
+            max_tokens=a.get("max_tokens"),
+            detail_level=a.get("detail_level", "summary"),
+            hydrate_keys=a.get("hydrate_keys"),
+            rank_mode=a.get("rank_mode", "balanced"),
+            enable_rerank=bool(a.get("enable_rerank", False)),
+        )
+    )
+
+
+def _h_hydrate(client: MemoryClient, a: dict[str, Any]) -> Any:
+    return _dump(
+        client.hydrate_memory(
+            keys=a["keys"],
+            index=a.get("index"),
+            max_keys=int(a.get("max_keys", 8)),
+            max_tokens=a.get("max_tokens"),
+        )
+    )
+
+
+def _h_retrieve_pack(client: MemoryClient, a: dict[str, Any]) -> Any:
+    return _dump(
+        client.retrieve_pack(
+            pack=a.get("pack"),
+            task_ids=a.get("task_ids"),
+            index=a.get("index"),
+            max_tokens=a.get("max_tokens"),
+            team_id=a.get("team_id"),
         )
     )
 
@@ -177,6 +230,86 @@ def _h_archive(client: MemoryClient, a: dict[str, Any]) -> Any:
     return client.archive_memory(key=a["key"], index=a.get("index"))
 
 
+def _h_pin_working_set(client: MemoryClient, a: dict[str, Any]) -> Any:
+    return _dump(
+        client.pin_working_set(
+            a["name"],
+            team_id=a["team_id"],
+            keys=a.get("keys"),
+            source_task_id=a.get("source_task_id"),
+            ttl_s=a.get("ttl_s"),
+            index=a.get("index"),
+        )
+    )
+
+
+def _h_fetch_working_set(client: MemoryClient, a: dict[str, Any]) -> Any:
+    return _dump(
+        client.fetch_working_set(
+            name=a.get("name"),
+            keys=a.get("keys"),
+            index=a.get("index"),
+            max_tokens=a.get("max_tokens"),
+            team_id=a.get("team_id"),
+        )
+    )
+
+
+def _h_expand_cites(client: MemoryClient, a: dict[str, Any]) -> Any:
+    return _dump(
+        client.expand_cites(
+            a["keys"],
+            index=a.get("index"),
+            depth=int(a.get("depth", 1)),
+            max_keys=int(a.get("max_keys", 16)),
+            max_tokens=a.get("max_tokens"),
+        )
+    )
+
+
+def _h_galaxy_search(client: MemoryClient, a: dict[str, Any]) -> Any:
+    params = parse_galaxy_search_params(
+        q=a["q"],
+        top_k=a.get("top_k", 8),
+        team_id=a.get("team_id"),
+        task_id=a.get("task_id"),
+    )
+    result = galaxy_search(
+        client,
+        params,
+        galaxyd_url=a.get("galaxyd_url"),
+        prefer_daemon=not bool(a.get("direct", False)),
+    )
+    return {
+        "q": result.q,
+        "top_k": result.top_k,
+        "source": result.source,
+        "results": result.results,
+        "error": result.error,
+    }
+
+
+def _infer_project_slug() -> str | None:
+    """Best-effort project slug: git toplevel dir name, else cwd name (V-46).
+
+    Heuristic only — the canonical slug registry lives in the vault
+    (agent-directory memory), and whoami stays zero-AWS-call, so no lookup.
+    """
+    import subprocess
+    from pathlib import Path
+
+    try:
+        top = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5, check=False,
+        ).stdout.strip()
+        if top:
+            return Path(top).name.lower()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return Path.cwd().name.lower() or None
+
+
 # --- Factory --------------------------------------------------------------------
 
 _CITE = (
@@ -210,13 +343,39 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
     def idx() -> dict[str, Any]:
         return _index_prop(allowed, shared)
 
+    def _whoami(client: MemoryClient, _args: dict[str, Any]) -> Any:
+        return {
+            "agent_id": client.agent_id,
+            "role": role,
+            "default_index": shared,
+            "allowed_indexes": list(allowed),
+            "team_id": client.expected_team_id,
+            "project_slug": _infer_project_slug(),
+        }
+
     tools = [
+        MemoryTool(
+            name="whoami",
+            description=(
+                "Session identity echo (V-46): the effective VECTORVAULT_AGENT_ID, "
+                "role, default/allowed indexes, expected team_id, and inferred project "
+                "slug. Zero AWS calls. Call at session start to catch misconfigured "
+                "identity before writing under the wrong agent_id or team_id."
+            ),
+            input_schema={"type": "object", "properties": {}},
+            handler=_whoami,
+            allowed_indexes=allowed,
+        ),
         MemoryTool(
             name="retrieve_memory",
             description=(
                 "Semantic search over shared memory. Returns the top_k most relevant "
                 "memories (collapsed to the latest version of each fact, expired and "
-                f"superseded ones excluded). {_CITE}"
+                "superseded ones excluded). Default detail_level=summary returns "
+                "content_summary or a short inline preview with no S3 fetches; use "
+                "detail_level=standard for legacy top-2 full hydration, full to hydrate "
+                "all hits, or hydrate_keys to upgrade specific result keys. "
+                f"{_CITE}"
             ),
             input_schema={
                 "type": "object",
@@ -224,11 +383,252 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
                     "query": {"type": "string", "description": "Natural-language query."},
                     "filters": _FILTERS_SCHEMA,
                     "top_k": {"type": "integer", "default": 5, "description": "Max results (post-collapse)."},
+                    "max_tokens": {
+                        "type": "integer",
+                        "description": "Content budget (default 4000).",
+                    },
+                    "detail_level": {
+                        "type": "string",
+                        "enum": ["summary", "standard", "full"],
+                        "default": "summary",
+                        "description": (
+                            "summary: summaries/previews only (default, no S3). "
+                            "standard: full body for top 2 hits. full: hydrate all top_k."
+                        ),
+                    },
+                    "hydrate_keys": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional keys from the result set to upgrade to full bodies.",
+                    },
+                    "rank_mode": {
+                        "type": "string",
+                        "enum": ["semantic", "balanced", "procedural"],
+                        "default": "balanced",
+                        "description": (
+                            "Post-collapse ordering: semantic=pure cosine distance; "
+                            "balanced=metadata boosts + MMR (default); procedural=boost SOPs."
+                        ),
+                    },
+                    "enable_rerank": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "Opt-in Cohere Rerank 3.5 via Bedrock (~$0.002/query). "
+                            "Re-orders collapsed top-10 hits; skips metadata rank_mode."
+                        ),
+                    },
                     "index": idx(),
                 },
                 "required": ["query"],
             },
             handler=_h_retrieve,
+            allowed_indexes=allowed,
+        ),
+        MemoryTool(
+            name="hydrate_memory",
+            description=(
+                "Fetch full bodies for explicit memory keys (batch get_memory). "
+                "Resolves externalized content via derived S3 keys. Use after "
+                "summary-first retrieve when you need the complete text for cited keys. "
+                f"{_CITE}"
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "keys": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Memory keys to hydrate (max_keys cap applies).",
+                    },
+                    "max_keys": {
+                        "type": "integer",
+                        "default": 8,
+                        "description": "Maximum keys to hydrate in one call.",
+                    },
+                    "max_tokens": {
+                        "type": "integer",
+                        "description": "Content budget (default 4000).",
+                    },
+                    "index": idx(),
+                },
+                "required": ["keys"],
+            },
+            handler=_h_hydrate,
+            allowed_indexes=allowed,
+        ),
+        MemoryTool(
+            name="fetch_working_set",
+            description=(
+                "Exact batch fetch of memory keys in stable input order — summary-first, "
+                "no semantic search. Pass keys directly (e.g. Waypoint spec_vault_keys) or "
+                "name to load a prior pin_working_set. Use when a peer cites mem_… keys "
+                "instead of retrieve_memory. "
+                f"{_CITE}"
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Named working set from pin_working_set.",
+                    },
+                    "keys": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Explicit memory keys to fetch in order.",
+                    },
+                    "team_id": {
+                        "type": "string",
+                        "description": "Filter when resolving a named pin.",
+                    },
+                    "max_tokens": {
+                        "type": "integer",
+                        "description": "Content budget (default 4000).",
+                    },
+                    "index": idx(),
+                },
+            },
+            handler=_h_fetch_working_set,
+            allowed_indexes=allowed,
+        ),
+        MemoryTool(
+            name="expand_cites",
+            description=(
+                "Expand memory keys by following supersedes, parent_key, and inline "
+                "mem_… references up to depth (default 1). Bounded by max_keys with cycle "
+                "detection. Summary-first bodies. "
+                f"{_CITE}"
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "keys": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Seed memory keys to expand.",
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Reference hops from each seed (0 = seeds only).",
+                    },
+                    "max_keys": {
+                        "type": "integer",
+                        "default": 16,
+                        "description": "Maximum keys in the expansion graph.",
+                    },
+                    "max_tokens": {
+                        "type": "integer",
+                        "description": "Content budget (default 4000).",
+                    },
+                    "index": idx(),
+                },
+                "required": ["keys"],
+            },
+            handler=_h_expand_cites,
+            allowed_indexes=allowed,
+        ),
+        MemoryTool(
+            name="galaxy_search",
+            description=(
+                "Semantic exploration for discovery (V-50) — not for session bootstrap "
+                "(use retrieve_pack). Proxies vv-galaxyd /api/search when reachable, "
+                "else summary-first retrieve_memory. Returns keys, summaries, distance "
+                "only. top_k 1-25."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "q": {"type": "string", "description": "Natural-language exploration query."},
+                    "top_k": {"type": "integer", "default": 8, "minimum": 1, "maximum": 25},
+                    "team_id": {"type": "string", "description": "Optional team_id filter."},
+                    "task_id": {"type": "string", "description": "Optional task_id filter."},
+                    "galaxyd_url": {
+                        "type": "string",
+                        "description": "Override GALAXYD_URL (default http://127.0.0.1:8777).",
+                    },
+                    "direct": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Skip galaxyd proxy; use retrieve_memory directly.",
+                    },
+                    "index": idx(),
+                },
+                "required": ["q"],
+            },
+            handler=_h_galaxy_search,
+            allowed_indexes=allowed,
+        ),
+        MemoryTool(
+            name="pin_working_set",
+            description=(
+                "Pin an ordered key list (or all active keys from source_task_id) under a "
+                "name for peer handoff. Stored as procedural memory with optional ttl_s. "
+                "Peers call fetch_working_set({name}) to reload the exact slice."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Working-set name."},
+                    "team_id": {"type": "string", "description": "team_id scope for the pin."},
+                    "keys": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Explicit keys to pin.",
+                    },
+                    "source_task_id": {
+                        "type": "string",
+                        "description": "Pin all active latest keys for this task_id.",
+                    },
+                    "ttl_s": {
+                        "type": "integer",
+                        "description": "Optional expiry offset in seconds from now.",
+                    },
+                    "index": idx(),
+                },
+                "required": ["name", "team_id"],
+            },
+            handler=_h_pin_working_set,
+            allowed_indexes=allowed,
+        ),
+        MemoryTool(
+            name="retrieve_pack",
+            description=(
+                "Exact bootstrap bundle for session start — no semantic search, no "
+                "query embedding. Named packs (e.g. fabric-onboarding, "
+                "project-vectorvault) or an explicit task_ids list fetch the latest "
+                "active memory per task via the canonical index. Returns "
+                "summary-first content within max_tokens. Missing tasks appear in "
+                f"warnings/missing_task_ids. {_CITE}"
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "pack": {
+                        "type": "string",
+                        "description": (
+                            "Named pack: fabric-onboarding, project-vectorvault, "
+                            "or project-{slug} when registered."
+                        ),
+                    },
+                    "task_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Explicit task_id list; overrides pack resolution when set.",
+                    },
+                    "team_id": {
+                        "type": "string",
+                        "description": "Optional filter: only memories with this team_id.",
+                    },
+                    "max_tokens": {
+                        "type": "integer",
+                        "description": "Content budget (default 4000).",
+                    },
+                    "index": idx(),
+                },
+            },
+            handler=_h_retrieve_pack,
             allowed_indexes=allowed,
         ),
         MemoryTool(
@@ -239,7 +639,9 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
                 "replacing. An exact duplicate is a no-op ('unchanged'); a near-duplicate "
                 "without supersedes_key returns 'duplicate_detected' + near_duplicates so "
                 "you can re-call with supersedes_key (correction) or mode='new' (genuinely "
-                "new fact). Content over 30 KB is externalized automatically."
+                "new fact). Content over ~500 tokens / 2 KB requires metadata.content_summary "
+                "(or mode='store_full' for bulk ingest). Content over 30 KB is externalized "
+                "automatically."
             ),
             input_schema={
                 "type": "object",
@@ -249,9 +651,12 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
                     "supersedes_key": {"type": "string", "description": "Key of the memory this corrects."},
                     "mode": {
                         "type": "string",
-                        "enum": ["auto", "new"],
+                        "enum": ["auto", "new", "store_full"],
                         "default": "auto",
-                        "description": "'new' appends even if near-duplicates exist.",
+                        "description": (
+                            "'new' appends even if near-duplicates exist; 'store_full' "
+                            "skips the large-content content_summary requirement (ingest scripts)."
+                        ),
                     },
                     "index": idx(),
                 },
@@ -328,7 +733,7 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
     ]
     if role == "auditor":
         tools = [t for t in tools if t.name in _READ_ONLY_VERBS]
-    return tools
+    return [replace(t, role=role) for t in tools]
 
 
 # --- Format adapters ------------------------------------------------------------
@@ -407,21 +812,35 @@ def execute_tool(
     an unknown tool, a disallowed index, or an exception raised by the handler
     (e.g. a missing key). Normal outcomes like ``duplicate_detected`` are results,
     not errors.
+
+    Every outcome — success or error — carries ``_meta: {agent_id, role}`` (V-46) so
+    misconfigured identity is visible on every call instead of silently mis-
+    attributing writes. Dict results gain a ``_meta`` key; non-dict results (e.g.
+    ``retrieve_memory``/``list_memories`` lists) are wrapped as
+    ``{"result": ..., "_meta": ...}``.
     """
     tool = next((t for t in tools if t.name == name), None)
+    role = tool.role if tool is not None else (tools[0].role if tools else None)
+    meta = {"agent_id": client.agent_id, "role": role}
+
+    def _with_meta(result: Any) -> Any:
+        if isinstance(result, dict):
+            return {**result, "_meta": meta}
+        return {"result": result, "_meta": meta}
+
     if tool is None:
-        return {"error": f"unknown tool: {name}", "available": [t.name for t in tools]}
+        return _with_meta({"error": f"unknown tool: {name}", "available": [t.name for t in tools]})
 
     index = arguments.get("index")
     if index is not None and tool.allowed_indexes and index not in tool.allowed_indexes:
-        return {
+        return _with_meta({
             "error": f"index not permitted for this role: {index}",
             "allowed": list(tool.allowed_indexes),
-        }
+        })
     try:
-        return tool.handler(client, arguments)
+        return _with_meta(tool.handler(client, arguments))
     except Exception as exc:  # surface as a tool result the agent can react to
-        return {"error": str(exc), "error_type": type(exc).__name__}
+        return _with_meta({"error": str(exc), "error_type": type(exc).__name__})
 
 
 # --- Credentials (Q6 / S2) ------------------------------------------------------

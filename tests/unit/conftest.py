@@ -127,7 +127,33 @@ class FakeTable:
         return {"Items": list(self.items.values()), "LastEvaluatedKey": None}
 
     def query(self, **kwargs):
-        return {"Items": list(self.query_result), "LastEvaluatedKey": None}
+        items = list(self.query_result)
+        kce = kwargs.get("KeyConditionExpression")
+        if kce is not None and hasattr(kce, "get_expression"):
+            expr = kce.get_expression()
+            vals = expr.get("values", ())
+            if len(vals) >= 2 and isinstance(vals[1], str):
+                task_id = vals[1]
+                if any("task_id" in i for i in items):
+                    items = [i for i in items if i.get("task_id") == task_id]
+        flt = kwargs.get("FilterExpression")
+        if flt is not None and hasattr(flt, "get_expression"):
+            items = self._apply_filter_expression(items, flt)
+        return {"Items": items, "LastEvaluatedKey": None}
+
+    @staticmethod
+    def _apply_filter_expression(items, flt):
+        expr = flt.get_expression()
+        op = expr.get("operator")
+        if op == "AND":
+            for sub in expr.get("values", ()):
+                items = FakeTable._apply_filter_expression(items, sub)
+            return items
+        vals = expr.get("values", ())
+        if len(vals) >= 2 and isinstance(vals[1], str):
+            attr = vals[0].name
+            return [i for i in items if i.get(attr) == vals[1]]
+        return items
 
 
 class FakeCloudWatch:

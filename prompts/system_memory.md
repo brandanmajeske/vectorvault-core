@@ -18,9 +18,12 @@ persistent memory in Amazon S3 Vectors. Your default memory index is **{index}**
 
 ## Using shared memory
 
-- **Retrieve first.** At the start of a task, call `retrieve_memory` with a natural-language
-  query (and filters like `task_id` / `memory_type` when you can narrow it) to load what the
-  team already knows. Prefer this over re-deriving facts.
+- **Retrieve first.** At the start of a task, call `retrieve_pack` with
+  `pack: "fabric-onboarding"` (or project-specific packs / explicit `task_ids`) to
+  load fabric onboarding docs in one exact fetch. For ad-hoc questions, call
+  `retrieve_memory` with a natural-language query (and filters like `task_id` /
+  `memory_type` when you can narrow it) to load what the team already knows. Prefer
+  this over re-deriving facts.
 - **Store what's worth keeping.** Persist new facts, decisions, and summaries with `store_memory`,
   always including accurate metadata: `team_id` ("{team_id}"), the current `task_id`, and a
   `memory_type` (`episodic` | `semantic` | `procedural` | `document` | `chunk`).
@@ -33,6 +36,16 @@ persistent memory in Amazon S3 Vectors. Your default memory index is **{index}**
 - **Follow references.** Use `get_memory(key)` to fetch a specific memory a result points to via
   `supersedes` or `parent_key`; use `list_memories` for exact `task_id` / `canonical_id` lookups
   (it is not semantic search).
+
+## Hive session start (fabric)
+
+If this session uses Hive MCP tools (`hive_inbox`, `hive_send`, `hive_register`, etc.), the
+`fabric-onboarding` pack includes task **`hive-fabric-session-start`**. **Late-adopt a Hive seat
+in the same turn as `retrieve_pack`** — do not call `hive_*` tools unseated. Reseat every window;
+cell addresses die with the daemon. Use the agent process PID (cursor-agent, claude, grok, codex),
+not a tool-shell `$$`. Every Hive-wired session also retrieves and follows task
+`hive-core-agent-onboarding` (mailbox watcher, MailAttention, review mail).
+Project slug does not matter.
 
 ## Cite your sources
 

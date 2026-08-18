@@ -81,3 +81,25 @@ def file_to_chunks(text: str, max_chars: int = DEFAULT_MAX_CHARS) -> tuple[str |
     """Parse frontmatter, then chunk the body. Returns ``(description, chunks)``."""
     desc, body = parse_frontmatter(text)
     return desc, chunk_markdown(body, max_chars)
+
+
+def first_paragraph_summary(text: str, max_len: int = 400) -> str:
+    """First non-empty paragraph, trimmed for ``content_summary`` when no heading/description."""
+    text = text.strip()
+    if not text:
+        return ""
+    for para in re.split(r"\n\s*\n", text):
+        para = para.strip()
+        if not para:
+            continue
+        lines = para.splitlines()
+        first = re.sub(r"^#+\s*", "", lines[0]).strip()
+        if len(lines) == 1:
+            body = first
+        else:
+            rest = " ".join(line.strip() for line in lines[1:] if line.strip())
+            body = f"{first} {rest}".strip() if first else rest
+        body = re.sub(r"\s+", " ", body).strip()
+        if body:
+            return body[:max_len]
+    return text[:max_len]

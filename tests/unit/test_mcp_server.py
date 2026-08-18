@@ -38,8 +38,8 @@ def test_dispatch_retrieve_returns_list(client, fakes):
     tools = create_memory_tools("researcher", client)
     fakes["s3v"].query_hits = [_hit(content="the finding")]
     out = json.loads(dispatch(tools, client, "retrieve_memory", {"query": "x", "filters": {"task_id": "q2"}}))
-    assert isinstance(out, list)
-    assert out[0]["content"] == "the finding"
+    assert out["_meta"] == {"agent_id": "planner", "role": "researcher"}  # V-46 echo
+    assert out["result"][0]["content"] == "the finding"
 
 
 def test_dispatch_unknown_tool_is_json_error(client):
@@ -54,4 +54,8 @@ def test_auditor_cannot_dispatch_mutating_verbs(client):
     tools = create_memory_tools("auditor", client)
     out = json.loads(dispatch(tools, client, "store_memory", {"content": "x", "metadata": dict(BASE)}))
     assert "unknown tool" in out["error"]
-    assert set(out["available"]) == {"retrieve_memory", "list_memories", "get_memory"}
+    assert set(out["available"]) == {
+        "whoami",
+        "retrieve_memory", "retrieve_pack", "hydrate_memory", "fetch_working_set",
+        "expand_cites", "galaxy_search", "list_memories", "get_memory",
+    }

@@ -74,6 +74,12 @@ class StoreAction(str, Enum):
     DUPLICATE_DETECTED = "duplicate_detected"
 
 
+class DetailLevel(str, Enum):
+    SUMMARY = "summary"
+    STANDARD = "standard"
+    FULL = "full"
+
+
 # --- Schema split (must match the index's nonFilterableMetadataKeys) -------------
 
 FILTERABLE_KEYS: tuple[str, ...] = (
@@ -189,6 +195,7 @@ class MemoryRecord(BaseModel):
     content_ref: str | None = None
     content_hash: str | None = None
     distance: float | None = None  # query cosine distance (similarity = 1 - distance)
+    hydrated: bool = False  # True when ``content`` was resolved from inline/S3 full body
 
     @classmethod
     def from_vector(cls, key: str, metadata: dict[str, Any], distance: float | None = None) -> MemoryRecord:
@@ -214,6 +221,55 @@ class MemoryRecord(BaseModel):
         )
 
 
+class HydrateResult(BaseModel):
+    """Return contract for ``hydrate_memory`` (V-44 explicit full-body fetch)."""
+
+    memories: list[MemoryRecord] = Field(default_factory=list)
+    tokens_used: int = 0
+    missing_keys: list[str] = Field(default_factory=list)
+
+
+class RetrievePackResult(BaseModel):
+    """Return contract for ``retrieve_pack`` (exact bootstrap bundles, V-43)."""
+
+    pack: str | None = None
+    task_ids: list[str] = Field(default_factory=list)
+    memories: list[MemoryRecord] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    missing_task_ids: list[str] = Field(default_factory=list)
+    tokens_used: int = 0
+
+
+class PinWorkingSetResult(BaseModel):
+    """Return contract for ``pin_working_set`` (V-47)."""
+
+    name: str
+    key: str
+    keys: list[str] = Field(default_factory=list)
+    expires_at: int | None = None
+    action: StoreAction
+
+
+class FetchWorkingSetResult(BaseModel):
+    """Return contract for ``fetch_working_set`` (V-47)."""
+
+    name: str | None = None
+    keys: list[str] = Field(default_factory=list)
+    memories: list[MemoryRecord] = Field(default_factory=list)
+    missing_keys: list[str] = Field(default_factory=list)
+    tokens_used: int = 0
+
+
+class ExpandCitesResult(BaseModel):
+    """Return contract for ``expand_cites`` (V-47)."""
+
+    seed_keys: list[str] = Field(default_factory=list)
+    memories: list[MemoryRecord] = Field(default_factory=list)
+    expanded_keys: list[str] = Field(default_factory=list)
+    truncated: bool = False
+    tokens_used: int = 0
+
+
 class StoreResult(BaseModel):
     """Return contract for ``store_memory`` (design-doc §4 / claude-review Q10)."""
 
@@ -223,3 +279,6 @@ class StoreResult(BaseModel):
     canonical_id: str | None = None
     content_ref: str | None = None
     near_duplicates: list[MemoryRecord] = Field(default_factory=list)
+    # Soft-warn surface (V-46): set when the write's team_id differs from the
+    # session's expected team. The write proceeds; the warning carries the remedy.
+    warning: str | None = None
