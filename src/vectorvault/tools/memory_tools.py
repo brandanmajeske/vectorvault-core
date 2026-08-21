@@ -37,6 +37,7 @@ from typing import Any, Literal
 from vectorvault.config import Config
 from vectorvault.galaxy_search import galaxy_search, parse_galaxy_search_params
 from vectorvault.memory_client import MemoryClient
+from vectorvault.memory_packs import PACK_REGISTRY
 
 Role = Literal["planner", "researcher", "auditor"]
 
@@ -361,6 +362,10 @@ _CITE = (
     "agents can audit and correct it."
 )
 
+# Generated from the registry so a new pack is visible in the schema the moment it
+# lands — agents read this description, not docs/.
+_PACK_NAMES = ", ".join(sorted(PACK_REGISTRY))
+
 
 def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
     """Build the memory tools for ``role`` bound to ``client``.
@@ -656,11 +661,12 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
             name="retrieve_pack",
             description=(
                 "Exact bootstrap bundle for session start — no semantic search, no "
-                "query embedding. Named packs (e.g. fabric-onboarding, "
-                "project-vectorvault) or an explicit task_ids list fetch the latest "
+                f"query embedding. Named packs ({_PACK_NAMES}) or an explicit "
+                "task_ids list fetch the latest "
                 "active memory per task via the canonical index. Returns "
                 "summary-first content within max_tokens. Missing tasks appear in "
-                f"warnings/missing_task_ids. {_CITE}"
+                "warnings/missing_task_ids; tasks dropped by the token budget are "
+                f"named in warnings. {_CITE}"
             ),
             input_schema={
                 "type": "object",
@@ -668,8 +674,8 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
                     "pack": {
                         "type": "string",
                         "description": (
-                            "Named pack: fabric-onboarding, project-vectorvault, "
-                            "or project-{slug} when registered."
+                            f"Named pack: {_PACK_NAMES}, or "
+                            "project-{slug} when registered."
                         ),
                     },
                     "task_ids": {

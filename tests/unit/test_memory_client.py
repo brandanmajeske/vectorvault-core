@@ -683,6 +683,36 @@ def test_retrieve_pack_respects_max_tokens(client, fakes):
 
     assert len(out.memories) == 1
     assert out.tokens_used <= 120
+    assert any("skipped task_ids: t2" in w for w in out.warnings)
+
+
+def test_retrieve_pack_budget_warning_names_all_skipped_tasks(client, fakes):
+    fakes["canon_table"].query_result = []
+    big = "Z" * 400
+    _seed_pack_row(fakes, task_id="t1", key="k1", summary=big)
+    _seed_pack_row(fakes, task_id="t2", key="k2", summary=big)
+    _seed_pack_row(fakes, task_id="t3", key="k3", summary=big)
+
+    out = client.retrieve_pack(task_ids=["t1", "t2", "t3"], max_tokens=120)
+
+    assert [m.task_id for m in out.memories] == ["t1"]
+    assert any("skipped task_ids: t2, t3" in w for w in out.warnings)
+    assert out.missing_task_ids == []
+
+
+def test_retrieve_pack_budget_warning_distinguishes_partial(client, fakes):
+    # A task straddling the cutoff is partially returned, not skipped — naming it
+    # skipped would tell the caller its SOP is absent when it is not.
+    fakes["canon_table"].query_result = []
+    big = "Z" * 400
+    _seed_pack_row(fakes, task_id="t1", key="k1", summary=big)
+    _seed_pack_row(fakes, task_id="t1", key="k2", summary=big)
+
+    out = client.retrieve_pack(task_ids=["t1"], max_tokens=120)
+
+    assert len(out.memories) == 1
+    assert any("partially returned task_ids: t1" in w for w in out.warnings)
+    assert not any("skipped task_ids: t1" in w for w in out.warnings)
 
 
 def test_retrieve_pack_team_id_filter(client, fakes):
