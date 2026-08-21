@@ -371,18 +371,17 @@ read/write that tenant's corpus.
 ### Session bootstrap (`retrieve_pack`)
 
 At session start, prefer **`retrieve_pack`** over several semantic `retrieve_memory`
-calls for known fabric docs:
+calls for known onboarding docs:
 
 ```json
-{"pack": "fabric-onboarding"}
+{"pack": "onboarding"}
 ```
 
-Named packs (extend `vectorvault.memory_packs.PACK_REGISTRY`):
-
-| Pack | task_ids fetched |
-|---|---|
-| `fabric-onboarding` | `agent-onboarding-prompt`, `agent-writing-standard`, `agent-directory`, `mcp-connection-guide`, `hive-fabric-session-start`, `hive-core-agent-onboarding` |
-| `project-vectorvault` | `vectorvault-project-state`, `charter` |
+Named packs are **deployment-specific** — the library ships an empty built-in
+registry. Configure yours as a JSON object of pack name → task_id list in the
+`/vectorvault/packs` SSM parameter (or the `VECTORVAULT_PACKS` env override),
+e.g. `{"onboarding": ["agent-directory", "mcp-connection-guide"]}`. Configured
+pack names appear in this tool's schema description automatically.
 
 Or pass an explicit list:
 

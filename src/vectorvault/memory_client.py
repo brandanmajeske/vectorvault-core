@@ -17,7 +17,7 @@ from typing import Any
 from vectorvault.canonical_index import CanonicalIndex
 from vectorvault.config import Config
 from vectorvault.embedding_cache import EmbeddingCache
-from vectorvault.memory_packs import resolve_pack_task_ids
+from vectorvault.memory_packs import registry_from_config, resolve_pack_task_ids
 from vectorvault.metrics import CloudWatchMetrics, MetricsEmitter, NullMetrics
 from vectorvault.models import (
     DetailLevel,
@@ -545,7 +545,9 @@ class MemoryClient:
         ``max_tokens``; missing tasks are reported in ``warnings``."""
         index = index or self._config.shared_index
         max_tokens = max_tokens if max_tokens is not None else self._max_tokens
-        pack_name, resolved_ids = resolve_pack_task_ids(pack=pack, task_ids=task_ids)
+        pack_name, resolved_ids = resolve_pack_task_ids(
+            pack=pack, task_ids=task_ids, registry=registry_from_config(self._config)
+        )
         now = int(self._clock())
 
         ordered: list[MemoryRecord] = []

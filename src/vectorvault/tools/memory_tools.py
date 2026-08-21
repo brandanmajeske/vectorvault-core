@@ -37,7 +37,7 @@ from typing import Any, Literal
 from vectorvault.config import Config
 from vectorvault.galaxy_search import galaxy_search, parse_galaxy_search_params
 from vectorvault.memory_client import MemoryClient
-from vectorvault.memory_packs import PACK_REGISTRY
+from vectorvault.memory_packs import registry_from_config
 
 Role = Literal["planner", "researcher", "auditor"]
 
@@ -362,9 +362,6 @@ _CITE = (
     "agents can audit and correct it."
 )
 
-# Generated from the registry so a new pack is visible in the schema the moment it
-# lands — agents read this description, not docs/.
-_PACK_NAMES = ", ".join(sorted(PACK_REGISTRY))
 
 
 def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
@@ -378,6 +375,9 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
     """
     cfg: Config = client.config
     shared = cfg.shared_index
+    # Generated from the configured registry so a new pack is visible in the schema
+    # the moment it lands — agents read this description, not docs/.
+    pack_names = ", ".join(sorted(registry_from_config(cfg))) or "none registered"
     if role == "planner":
         allowed = (shared, cfg.planner_index)
     elif role == "researcher":
@@ -661,7 +661,7 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
             name="retrieve_pack",
             description=(
                 "Exact bootstrap bundle for session start — no semantic search, no "
-                f"query embedding. Named packs ({_PACK_NAMES}) or an explicit "
+                f"query embedding. Named packs ({pack_names}) or an explicit "
                 "task_ids list fetch the latest "
                 "active memory per task via the canonical index. Returns "
                 "summary-first content within max_tokens. Missing tasks appear in "
@@ -674,7 +674,7 @@ def create_memory_tools(role: Role, client: MemoryClient) -> list[MemoryTool]:
                     "pack": {
                         "type": "string",
                         "description": (
-                            f"Named pack: {_PACK_NAMES}, or "
+                            f"Named pack: {pack_names}, or "
                             "project-{slug} when registered."
                         ),
                     },

@@ -28,10 +28,11 @@ _PARAM_MAP: dict[str, tuple[str, str]] = {
     f"{SSM_PREFIX}/table/memory-index-task-gsi": ("memory_index_task_gsi", "MEMORY_INDEX_TASK_GSI"),
     f"{SSM_PREFIX}/table/memory-ttl-index": ("ttl_index_table", "TTL_INDEX_TABLE"),
     f"{SSM_PREFIX}/embed-model-id": ("embed_model_id", "EMBED_MODEL_ID"),
+    f"{SSM_PREFIX}/packs": ("packs", "VECTORVAULT_PACKS"),
 }
 
 # Fields that are optional (have a default on Config) — not required from SSM/env.
-_OPTIONAL_FIELDS = frozenset({"embed_model_id", "ttl_index_table"})
+_OPTIONAL_FIELDS = frozenset({"embed_model_id", "ttl_index_table", "packs"})
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,9 @@ class Config:
     # expiry row so the TTL worker can find expired keys without a full scan.
     ttl_index_table: str = ""
     embed_model_id: str = "amazon.titan-embed-text-v2:0"
+    # Optional: JSON object mapping pack name -> [task_id, ...] for retrieve_pack
+    # (V-43). Deployment-specific — the library ships an empty built-in registry.
+    packs: str = ""
 
     @classmethod
     def from_ssm(cls, ssm_client, prefix: str = SSM_PREFIX) -> Config:
