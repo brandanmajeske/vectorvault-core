@@ -568,7 +568,18 @@ class MemoryClient:
             live.sort(key=lambda r: (r.version, r.created_at), reverse=True)
             ordered.extend(live)
 
-        memories, tokens_used = self._apply_pack_budget(ordered, max_tokens)
+        memories, tokens_used, dropped = self._apply_pack_budget(ordered, max_tokens)
+        if dropped:
+            returned = {m.task_id for m in memories}
+            dropped_ids = list(dict.fromkeys(r.task_id for r in dropped))
+            skipped = [t for t in dropped_ids if t not in returned]
+            truncated = [t for t in dropped_ids if t in returned]
+            parts = []
+            if skipped:
+                parts.append(f"skipped task_ids: {', '.join(skipped)}")
+            if truncated:
+                parts.append(f"partially returned task_ids: {', '.join(truncated)}")
+            warnings.append(f"token budget {max_tokens} reached; " + "; ".join(parts))
         return RetrievePackResult(
             pack=pack_name,
             task_ids=resolved_ids,
@@ -591,20 +602,20 @@ class MemoryClient:
 
     def _apply_pack_budget(
         self, records: list[MemoryRecord], max_tokens: int
-    ) -> tuple[list[MemoryRecord], int]:
+    ) -> tuple[list[MemoryRecord], int, list[MemoryRecord]]:
         results: list[MemoryRecord] = []
         used = 0
-        for record in records:
+        for i, record in enumerate(records):
             chosen = self._pack_summary_content(record)
             tokens = self._estimate_tokens(chosen)
             if results and used + tokens > max_tokens:
-                break
+                return results, used, records[i:]
             out = record.model_copy(deep=True)
             out.content = chosen
             out.distance = None
             results.append(out)
             used += tokens
-        return results, used
+        return results, used, []
 
     # --- working sets (V-47) -----------------------------------------------------
 
