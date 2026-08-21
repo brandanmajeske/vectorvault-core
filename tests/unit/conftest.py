@@ -178,6 +178,19 @@ def config() -> Config:
         embed_cache_table="memory-embed-cache",
         memory_index_table="memory-index",
         memory_index_task_gsi="task_id-created_at-index",
+        packs=json.dumps(
+            {
+                "fabric-onboarding": [
+                    "agent-onboarding-prompt",
+                    "agent-writing-standard",
+                    "agent-directory",
+                    "mcp-connection-guide",
+                    "hive-fabric-session-start",
+                    "hive-core-agent-onboarding",
+                ],
+                "project-vectorvault": ["vectorvault-project-state", "charter"],
+            }
+        ),
     )
 
 
