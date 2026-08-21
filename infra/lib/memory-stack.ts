@@ -681,6 +681,10 @@ export class MemoryStack extends cdk.Stack {
     param('ParamTtlIndexTable', ssmParam('table', 'memory-ttl-index'), ttlIndexTable.tableName);
 
     param('ParamEmbedModelId', ssmParam('embed-model-id'), EMBED_MODEL_ID);
+    // Named retrieve_pack bundles (V-43) are deployment-specific: the stack
+    // publishes an empty registry and each deployment overwrites this parameter
+    // out-of-band with its own JSON object of pack name -> [task_id, ...].
+    param('ParamPacks', ssmParam('packs'), '{}');
     param('ParamKmsKeyArn', ssmParam('kms-key-arn'), key.keyArn);
     param('ParamAlertsTopicArn', ssmParam('alerts-topic-arn'), alertsTopic.topicArn);
 

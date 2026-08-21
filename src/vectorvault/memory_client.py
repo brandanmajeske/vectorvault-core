@@ -17,7 +17,7 @@ from typing import Any
 from vectorvault.canonical_index import CanonicalIndex
 from vectorvault.config import Config
 from vectorvault.embedding_cache import EmbeddingCache
-from vectorvault.memory_packs import resolve_pack_task_ids
+from vectorvault.memory_packs import registry_from_config, resolve_pack_task_ids
 from vectorvault.metrics import CloudWatchMetrics, MetricsEmitter, NullMetrics
 from vectorvault.models import (
     DetailLevel,
@@ -545,7 +545,9 @@ class MemoryClient:
         ``max_tokens``; missing tasks are reported in ``warnings``."""
         index = index or self._config.shared_index
         max_tokens = max_tokens if max_tokens is not None else self._max_tokens
-        pack_name, resolved_ids = resolve_pack_task_ids(pack=pack, task_ids=task_ids)
+        pack_name, resolved_ids = resolve_pack_task_ids(
+            pack=pack, task_ids=task_ids, registry=registry_from_config(self._config)
+        )
         now = int(self._clock())
 
         ordered: list[MemoryRecord] = []
@@ -568,7 +570,18 @@ class MemoryClient:
             live.sort(key=lambda r: (r.version, r.created_at), reverse=True)
             ordered.extend(live)
 
-        memories, tokens_used = self._apply_pack_budget(ordered, max_tokens)
+        memories, tokens_used, dropped = self._apply_pack_budget(ordered, max_tokens)
+        if dropped:
+            returned = {m.task_id for m in memories}
+            dropped_ids = list(dict.fromkeys(r.task_id for r in dropped))
+            skipped = [t for t in dropped_ids if t not in returned]
+            truncated = [t for t in dropped_ids if t in returned]
+            parts = []
+            if skipped:
+                parts.append(f"skipped task_ids: {', '.join(skipped)}")
+            if truncated:
+                parts.append(f"partially returned task_ids: {', '.join(truncated)}")
+            warnings.append(f"token budget {max_tokens} reached; " + "; ".join(parts))
         return RetrievePackResult(
             pack=pack_name,
             task_ids=resolved_ids,
@@ -591,20 +604,20 @@ class MemoryClient:
 
     def _apply_pack_budget(
         self, records: list[MemoryRecord], max_tokens: int
-    ) -> tuple[list[MemoryRecord], int]:
+    ) -> tuple[list[MemoryRecord], int, list[MemoryRecord]]:
         results: list[MemoryRecord] = []
         used = 0
-        for record in records:
+        for i, record in enumerate(records):
             chosen = self._pack_summary_content(record)
             tokens = self._estimate_tokens(chosen)
             if results and used + tokens > max_tokens:
-                break
+                return results, used, records[i:]
             out = record.model_copy(deep=True)
             out.content = chosen
             out.distance = None
             results.append(out)
             used += tokens
-        return results, used
+        return results, used, []
 
     # --- working sets (V-47) -----------------------------------------------------
 
