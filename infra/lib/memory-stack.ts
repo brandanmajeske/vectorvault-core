@@ -92,7 +92,10 @@ export class MemoryStack extends cdk.Stack {
       trustConditions,
     );
 
-    const alertEmail: string = this.node.tryGetContext('alertEmail') ?? 'bmarkmajeske+awsbrake@outlook.com';
+    // Alert email is opt-in via `-c alertEmail=<addr>`; no default. Without it,
+    // alerts fan out through the SNS topic only (subscribe a real address to it
+    // out of band). Never hardcode a personal address here.
+    const alertEmail: string | undefined = this.node.tryGetContext('alertEmail');
 
     const partition = cdk.Aws.PARTITION;
     const region = cdk.Aws.REGION;
@@ -496,7 +499,9 @@ export class MemoryStack extends cdk.Stack {
       topicName: ALERTS_TOPIC_NAME,
       displayName: 'VectorVault alerts',
     });
-    alertsTopic.addSubscription(new subscriptions.EmailSubscription(alertEmail));
+    if (alertEmail) {
+      alertsTopic.addSubscription(new subscriptions.EmailSubscription(alertEmail));
+    }
 
     // AWS Budgets must be able to publish budget notifications to the topic.
     const alertsTopicPolicy = new sns.TopicPolicy(this, 'AlertsTopicPolicy', {
@@ -514,12 +519,14 @@ export class MemoryStack extends cdk.Stack {
 
     // =========================================================================
     // AWS Budget — $20/month hard cap; alarm at 80% ($16). Owner constraint
-    // (design-doc §1/§6; brandan-cost-sensitivity). ACCOUNT-WIDE by decision
-    // (owner, 2026-07-08): account 904233124492 also hosts llm-forge et al., but
-    // those are paused, so total account spend == VectorVault spend for now. If
-    // other projects resume, scope this to VectorVault by adding a costFilters on
-    // the `project: vectorvault` cost-allocation tag (all resources are tagged;
-    // activate the tag in the Billing console first, ~24h to take effect).
+    // (design-doc §1/§6; brandan-cost-sensitivity). SCOPED to VectorVault via a
+    // costFilters on the `project: vectorvault` cost-allocation tag (every
+    // resource is tagged at bin/app.ts). The `user:` prefix denotes a
+    // user-defined (vs AWS-generated) cost-allocation tag.
+    //
+    // PREREQUISITE: activate `project` as a cost-allocation tag in the Billing
+    // console (Cost allocation tags → user-defined). Until activated, the filter
+    // matches no cost and the budget reads $0 — takes up to ~24h after activation.
     // =========================================================================
     const budget = new budgets.CfnBudget(this, 'MonthlyBudget', {
       budget: {
@@ -531,11 +538,16 @@ export class MemoryStack extends cdk.Stack {
         budgetType: 'COST',
         timeUnit: 'MONTHLY',
         budgetLimit: { amount: 20, unit: 'USD' },
+        // Scope spend to this project only — stops account-wide alerts firing on
+        // other projects' (e.g. llm-forge) spend.
+        costFilters: { TagKeyValue: ['user:project$vectorvault'] },
       },
-      // Each notification targets BOTH a direct EMAIL subscriber and the SNS topic.
-      // The direct EMAIL is the reliable primary alert: unlike an SNS email
-      // subscription, it needs no manual confirmation click and no Region coupling —
-      // it always fires. The SNS subscriber gives PR 5 monitoring a fan-out hook.
+      // Each notification always targets the SNS topic; a direct EMAIL subscriber
+      // is added only when `-c alertEmail=<addr>` is supplied. The direct EMAIL,
+      // when present, is the reliable primary alert: unlike an SNS email
+      // subscription, it needs no manual confirmation click and no Region coupling.
+      // The SNS subscriber gives PR 5 monitoring a fan-out hook and is the sole
+      // path when no email is configured.
       notificationsWithSubscribers: [
         {
           // Alarm at 80% of the $20 cap on actual spend.
@@ -546,7 +558,7 @@ export class MemoryStack extends cdk.Stack {
             thresholdType: 'PERCENTAGE',
           },
           subscribers: [
-            { subscriptionType: 'EMAIL', address: alertEmail },
+            ...(alertEmail ? [{ subscriptionType: 'EMAIL', address: alertEmail }] : []),
             { subscriptionType: 'SNS', address: alertsTopic.topicArn },
           ],
         },
@@ -559,7 +571,7 @@ export class MemoryStack extends cdk.Stack {
             thresholdType: 'PERCENTAGE',
           },
           subscribers: [
-            { subscriptionType: 'EMAIL', address: alertEmail },
+            ...(alertEmail ? [{ subscriptionType: 'EMAIL', address: alertEmail }] : []),
             { subscriptionType: 'SNS', address: alertsTopic.topicArn },
           ],
         },
