@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "generated_at_epoch": 1787866321,
+  "arms": {
+    "control_max_tokens": 4000,
+    "candidate_max_tokens": 750
+  },
+  "repeats_per_arm_per_question": 8,
+  "tokenizer": "o200k_base",
+  "top_k": 10,
+  "aggregate": {
+    "control": {
+      "runs": 40,
+      "mean_recall_at_10": 0.9,
+      "min_recall_at_10": 0.5,
+      "recall_stddev": 0.2,
+      "total_tokens_packed_real": 26724,
+      "total_tokens_packed_est": 25328,
+      "total_regenerated_tokens": 0,
+      "net_tokens_real": 26724,
+      "stale_packed": 0,
+      "extra_hydrations": 0,
+      "task_success_rate": 1.0,
+      "mean_latency_ms": 180.66053679212928
+    },
+    "candidate": {
+      "runs": 40,
+      "mean_recall_at_10": 0.9,
+      "min_recall_at_10": 0.5,
+      "recall_stddev": 0.2,
+      "total_tokens_packed_real": 24996,
+      "total_tokens_packed_est": 23662,
+      "total_regenerated_tokens": 0,
+      "net_tokens_real": 24996,
+      "stale_packed": 0,
+      "extra_hydrations": 0,
+      "task_success_rate": 1.0,
+      "mean_latency_ms": 140.19889442715794
+    }
+  },
+  "candidate_gate": {
+    "pass": true,
+    "checks": {
+      "no_task_success_regression": true,
+      "recall_at_least_0.90": true,
+      "recall_not_worse_than_control": true,
+      "zero_stale_packed": true,
+      "no_material_hydration_increase": true,
+      "net_real_token_reduction": true,
+      "stable_repeats": true
+    }
+  },
+  "max_per_question_run_stddev": 0.0,
+  "per_question": {
+    "fabric-onboarding": {
+      "control": {
+        "runs": 8,
+        "mean_recall_at_10": 1.0,
+        "min_recall_at_10": 1.0,
+        "recall_stddev": 0.0,
+        "total_tokens_packed_real": 3744,
+        "total_tokens_packed_est": 4144,
+        "total_regenerated_tokens": 0,
+        "net_tokens_real": 3744,
+        "stale_packed": 0,
+        "extra_hydrations": 0,
+        "task_success_rate": 1.0,
+        "mean_latency_ms": 325.8895828621462
+      },
+      "candidate": {
+        "runs": 8,
+        "mean_recall_at_10": 1.0,
+        "min_recall_at_10": 1.0,
+        "recall_stddev": 0.0,
+        "total_tokens_packed_real": 3744,
+        "total_tokens_packed_est": 4144,
+        "total_regenerated_tokens": 0,
+        "net_tokens_real": 3744,
+        "stale_packed": 0,
+        "extra_hydrations": 0,
+        "task_success_rate": 1.0,
+        "mean_latency_ms": 160.34415847389027
+      }
+    },
+    "project-state": {
+      "control": {
+        "runs": 8,
+        "mean_recall_at_10": 0.5,
+        "min_recall_at_10": 0.5,
+        "recall_stddev": 0.0,
+        "total_tokens_packed_real": 4352,
+        "total_tokens_packed_est": 3768,
+        "total_regenerated_tokens": 0,
+        "net_tokens_real": 4352,
+        "stale_packed": 0,
+        "extra_hydrations": 0,
+        "task_success_rate": 1.0,
+        "mean_latency_ms": 159.13694049231708
+      },
+      "candidate": {
+        "runs": 8,
+        "mean_recall_at_10": 0.5,
+        "min_recall_at_10": 0.5,
+        "recall_stddev": 0.0,
+        "total_tokens_packed_real": 4352,
+        "total_tokens_packed_est": 3768,
+        "total_regenerated_tokens": 0,
+        "net_tokens_real": 4352,
+        "stale_packed": 0,
+        "extra_hydrations": 0,
+        "task_success_rate": 1.0,
+        "mean_latency_ms": 147.07888664270286
+      }
+    },
+    "working-set-handoff": {
+      "control": {
+        "runs": 8,
+        "mean_recall_at_10": 1.0,
+        "min_recall_at_10": 1.0,
+        "recall_stddev": 0.0,
+        "total_tokens_packed_real": 6304,
+        "total_tokens_packed_est": 6072,
+        "total_regenerated_tokens": 0,
+        "net_tokens_real": 6304,
+        "stale_packed": 0,
+        "extra_hydrations": 0,
+        "task_success_rate": 1.0,
+        "mean_latency_ms": 132.91500211926177
+      },
+      "candidate": {
+        "runs": 8,
+        "mean_recall_at_10": 1.0,
+        "min_recall_at_10": 1.0,
+        "recall_stddev": 0.0,
+        "total_tokens_packed_real": 6072,
+        "total_tokens_packed_est": 5888,
+        "total_regenerated_tokens": 0,
+        "net_tokens_real": 6072,
+        "stale_packed": 0,
+        "extra_hydrations": 0,
+        "task_success_rate": 1.0,
+        "mean_latency_ms": 127.53828364657238
+      }
+    },
+    "supersession": {
+      "control": {
+        "runs": 8,
+        "mean_recall_at_10": 1.0,
+        "min_recall_at_10": 1.0,
+        "recall_stddev": 0.0,
+        "total_tokens_packed_real": 5224,
+        "total_tokens_packed_est": 4720,
+        "total_regenerated_tokens": 0,
+        "net_tokens_real": 5224,
+        "stale_packed": 0,
+        "extra_hydrations": 0,
+        "task_success_rate": 1.0,
+        "mean_latency_ms": 155.7454183785012
+      },
+      "candidate": {
+        "runs": 8,
+        "mean_recall_at_10": 1.0,
+        "min_recall_at_10": 1.0,
+        "recall_stddev": 0.0,
+        "total_tokens_packed_real": 5224,
+        "total_tokens_packed_est": 4720,
+        "total_regenerated_tokens": 0,
+        "net_tokens_real": 5224,
+        "stale_packed": 0,
+        "extra_hydrations": 0,
+        "task_success_rate": 1.0,
+        "mean_latency_ms": 138.51421351137105
+      }
+    },
+    "exact-ticket-id": {
+      "control": {
+        "runs": 8,
+        "mean_recall_at_10": 1.0,
+        "min_recall_at_10": 1.0,
+        "recall_stddev": 0.0,
+        "total_tokens_packed_real": 7100,
+        "total_tokens_packed_est": 6624,
+        "total_regenerated_tokens": 0,
+        "net_tokens_real": 7100,
+        "stale_packed": 0,
+        "extra_hydrations": 0,
+        "task_success_rate": 1.0,
+        "mean_latency_ms": 129.61574010842014
+      },
+      "candidate": {
+        "runs": 8,
+        "mean_recall_at_10": 1.0,
+        "min_recall_at_10": 1.0,
+        "recall_stddev": 0.0,
+        "total_tokens_packed_real": 5604,
+        "total_tokens_packed_est": 5142,
+        "total_regenerated_tokens": 0,
+        "net_tokens_real": 5604,
+        "stale_packed": 0,
+        "extra_hydrations": 0,
+        "task_success_rate": 1.0,
+        "mean_latency_ms": 127.51892986125313
+      }
+    }
+  },
+  "environment_note": "MemoryResearcherRole assume failed (bmaj lacks sts:SetSourceIdentity); ran read-only under ambient creds (VECTORVAULT_ROLE=none). IAM-only variance; does not change retrieval behavior."
+}

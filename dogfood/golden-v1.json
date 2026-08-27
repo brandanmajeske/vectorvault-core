@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "description": "V-57 dogfood A/B golden set — mirrors evals/retrieval-golden-v1.json on VectorVault main, plus a concrete downstream consumer task per question. downstream.answer_task_id names the memory whose summary the consumer must be able to use to complete the task WITHOUT extra hydration.",
+  "questions": [
+    {
+      "id": "fabric-onboarding",
+      "query": "How does a new agent connect to VectorVault and discover the agent directory?",
+      "filters": {},
+      "expected_task_ids": ["agent-onboarding-prompt", "mcp-connection-guide", "agent-directory"],
+      "downstream": {
+        "task": "State the MCP connection step a new agent runs to reach the vault.",
+        "answer_task_id": "mcp-connection-guide",
+        "answer_keywords": ["mcp", "connect"]
+      }
+    },
+    {
+      "id": "project-state",
+      "query": "What is the current VectorVault project state and operating charter?",
+      "filters": {"team_id": "vectorvault"},
+      "expected_task_ids": ["vectorvault-project-state", "charter"],
+      "downstream": {
+        "task": "Summarize the current project state before starting new work.",
+        "answer_task_id": "vectorvault-project-state",
+        "answer_keywords": ["vectorvault"]
+      }
+    },
+    {
+      "id": "working-set-handoff",
+      "query": "How do agents pin and fetch an exact ordered working set for a peer handoff?",
+      "filters": {"team_id": "vectorvault"},
+      "expected_task_ids": ["wp-V-47"],
+      "downstream": {
+        "task": "Name the mechanism used to hand off an ordered set of memory keys to a peer.",
+        "answer_task_id": "wp-V-47",
+        "answer_keywords": ["working set", "pin"]
+      }
+    },
+    {
+      "id": "supersession",
+      "query": "How does an agent correct an existing memory without returning the stale version?",
+      "filters": {"team_id": "vectorvault"},
+      "expected_task_ids": ["v-44-tiered-retrieval", "vectorvault-project-state"],
+      "downstream": {
+        "task": "Describe how a correction hides the stale version from retrieval.",
+        "answer_task_id": "v-44-tiered-retrieval",
+        "answer_keywords": ["supersede", "collapse", "version"]
+      }
+    },
+    {
+      "id": "exact-ticket-id",
+      "query": "What work and result are associated with V-54?",
+      "filters": {"team_id": "vectorvault"},
+      "expected_task_ids": ["wp-V-54"],
+      "downstream": {
+        "task": "State what ticket V-54 delivered.",
+        "answer_task_id": "wp-V-54",
+        "answer_keywords": ["V-54"]
+      }
+    }
+  ]
+}
