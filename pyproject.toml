@@ -22,7 +22,7 @@ dev = [
 # MCP server (console script `vectorvault-mcp`). Optional — the core client and the
 # TTL Lambda never import it, so it stays out of the runtime/CI dependency set.
 mcp = [
-    "mcp>=1.2",
+    "mcp>=1.2,<2",
 ]
 # Real-LLM end-to-end tests (tests/e2e). Optional — never imported by the core
 # client or CI. Gemma runs locally via Ollama (no dependency here beyond openai).
