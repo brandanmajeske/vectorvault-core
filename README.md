@@ -79,10 +79,25 @@ AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv.py --role researcher --ag
 `--role` assumes the scoped IAM role (`RoleSessionName = agent_id`, for CloudTrail).
 Full walkthrough + agent instructions: **[docs/using-with-cli-agents.md](docs/using-with-cli-agents.md)**.
 
+### Read-only diagnostics
+
+Use `doctor` to check the runtime, AWS identity, `/vectorvault` SSM contract, MCP
+version, and role assumption without embedding or mutating memory. Add
+`--probe-data-plane` for an explicit read-only S3 Vectors list check, or `--json` for
+agent-readable output:
+
+```bash
+AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv.py \
+  --role planner --agent-id my-agent doctor --json --probe-data-plane
+```
+
+The command never performs Bedrock embedding, vector writes, content writes/deletes,
+archive/restore, or purge operations.
+
 ### MCP server (native tools)
 
 For MCP-capable agents (Claude Code, Claude Desktop, …), `pip install -e ".[mcp]"` adds a
-`vectorvault-mcp` server that exposes the six memory verbs as **native tools** over stdio —
+`vectorvault-mcp` server that exposes the memory tools as **native tools** over stdio —
 still keyless (AWS creds only). Register it in `.mcp.json` with `VECTORVAULT_ROLE` /
 `VECTORVAULT_AGENT_ID` env; setup is in the [runbook](docs/using-with-cli-agents.md#native-tools-via-mcp-recommended-for-mcp-capable-agents).
 

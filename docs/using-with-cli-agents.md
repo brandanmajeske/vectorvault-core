@@ -64,7 +64,19 @@ AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv.py <command> [args]
 | `archive <key>` | Retract a wrong memory (stops surfacing; GC'd after 30-day grace). |
 | `restore <key>` | Undo a bad correction or archive. |
 | `purge <canonical_id>` | **Hard-delete** a canonical group (vector + content + index row). Needs `--role admin` or ambient admin creds. |
+| `doctor [--json] [--probe-data-plane]` | Read-only runtime, AWS identity, SSM, MCP-version, role, and optional S3 Vectors reachability checks. Never embeds or mutates memory. |
 | `galaxy [flags]` | Render the [Memory Galaxy](memory-galaxy.md) from the live vault and serve it at `http://127.0.0.1:8777` (alias `vv --galaxy`; flags pass through to `vv_galaxy.py`). |
+
+
+For a safe preflight, run `doctor` with the same global role and agent flags you will use:
+
+```bash
+AWS_PROFILE=<your-profile> .venv/bin/python scripts/vv.py \
+  --role planner --agent-id my-agent doctor --json --probe-data-plane
+```
+
+The default checks use STS and SSM. The optional data-plane check only lists one vector
+from the shared index. No doctor mode invokes Bedrock or mutates memory.
 
 **Global flags:** `--region` (default `us-west-2`), `--role`, `--agent-id`.
 

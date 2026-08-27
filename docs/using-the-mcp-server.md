@@ -66,6 +66,22 @@ writes. List-valued results (`retrieve_memory`, `list_memories`) are wrapped as
 effective `agent_id`, `role`, default/allowed indexes, expected `team_id`, and
 inferred project slug — zero AWS calls.
 
+### Automated protocol smoke test
+
+The repository includes an opt-in smoke test for the real `vectorvault-mcp` stdio
+entrypoint. It initializes an MCP session, lists tools and schemas, calls `whoami`,
+and checks a structured unknown-tool response without embedding, writing, or deleting
+memory:
+
+```bash
+VECTORVAULT_RUN_INTEGRATION=1 AWS_PROFILE=<your-profile> \
+  VECTORVAULT_ROLE=auditor VECTORVAULT_AGENT_ID=mcp-smoke \
+  pytest tests/integration/test_mcp_server.py -q
+```
+
+The normal unit suite remains hermetic; the integration test requires the deployed
+stack, AWS credentials, and `pip install -e ".[dev,mcp]"`.
+
 ---
 
 ## Path A — The natural way: ask Claude Code
