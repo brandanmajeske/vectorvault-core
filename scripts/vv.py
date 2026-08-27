@@ -13,6 +13,7 @@ via IAM). Output is JSON so an agent can parse it.
     vv archive <key>
     vv restore <key>
     vv purge   <canonical_id>          # hard delete; needs --role admin (or ambient admin creds)
+    vv doctor  [--json] [--probe-data-plane]  # read-only configuration and reachability checks
     vv galaxy  [vv_galaxy flags]       # render + open the Memory Galaxy (alias: vv --galaxy)
 
 ``--role planner|researcher|auditor|admin`` assumes that scoped IAM role with
@@ -114,6 +115,11 @@ def build_parser() -> argparse.ArgumentParser:
                                       "Requires --role admin or ambient admin creds; agent roles are denied by IAM.")
     pg.add_argument("canonical_id")
 
+    d = sub.add_parser("doctor", help="Run read-only AWS, configuration, role, and MCP diagnostics.")
+    d.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    d.add_argument("--probe-data-plane", action="store_true",
+                   help="Also perform a read-only S3 Vectors list probe (no embeddings or writes).")
+
     gx = sub.add_parser("galaxy", help="Render the Memory Galaxy from the live vault and open it "
                                        "(delegates to scripts/vv_galaxy.py; also reachable as `vv --galaxy`).")
     gx.add_argument("rest", nargs=argparse.REMAINDER,
@@ -173,6 +179,20 @@ def main(argv: list[str] | None = None) -> int:
     # parse_known_args so galaxy's flags pass through untouched (argparse REMAINDER
     # in a subparser refuses tokens that start with '-'); other verbs stay strict.
     args, extra = parser.parse_known_args(argv)
+    if args.cmd == "doctor":
+        if extra:
+            parser.error(f"unrecognized arguments: {' '.join(extra)}")
+        from vectorvault.doctor import run_doctor
+
+        report = run_doctor(
+            region=args.region,
+            role=args.role,
+            agent_id=args.agent_id,
+            profile=profile,
+            probe_data_plane=args.probe_data_plane,
+        )
+        print(report.to_json() if args.json else report.render())
+        return report.exit_code
     if args.cmd == "galaxy":  # no memory client needed — hand off before AWS setup
         return _run_galaxy([*extra, *args.rest])
     if extra:

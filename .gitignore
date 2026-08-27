@@ -1,6 +1,10 @@
 # Claude Code local settings (per-machine permissions)
 .claude/settings.local.json
 
+# MCP server configs are per-machine; store them as VectorVault memories, not in git
+.mcp.json
+.kiro/
+
 # Python
 __pycache__/
 *.py[cod]
