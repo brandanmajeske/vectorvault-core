@@ -5,8 +5,9 @@ Run with the deployed stack and MCP extra installed:
     VECTORVAULT_RUN_INTEGRATION=1 AWS_PROFILE=provider-dev \
         pytest tests/integration/test_mcp_server.py -q
 
-The test only initializes the server, lists tools, calls ``whoami``, and checks
-an unknown-tool response. It performs no embedding, memory write, or deletion.
+The test only initializes the server, lists tools, calls ``whoami`` and the
+read-only ``doctor`` tool, and checks an unknown-tool response. It performs no
+embedding, memory write, or deletion (doctor runs with probe_data_plane off).
 """
 
 from __future__ import annotations
@@ -66,12 +67,20 @@ async def _smoke() -> None:
             await session.initialize()
             listed = await session.list_tools()
             tools = {tool.name: tool for tool in listed.tools}
-            assert {"whoami", "retrieve_memory", "list_memories"} <= tools.keys()
+            assert {"whoami", "retrieve_memory", "list_memories", "doctor"} <= tools.keys()
             assert all(tool.inputSchema for tool in tools.values())
 
             identity = json.loads(_text(await session.call_tool("whoami", {})))
             assert identity["agent_id"] == os.environ.get("VECTORVAULT_AGENT_ID", "mcp-smoke")
             assert identity["_meta"]["role"] == os.environ.get("VECTORVAULT_ROLE", "auditor")
+
+            # Doctor is read-only; default probe_data_plane=false keeps it control-plane only.
+            report = json.loads(_text(await session.call_tool("doctor", {})))
+            assert "healthy" in report and "checks" in report
+            assert report["context"]["agent_id"] == os.environ.get("VECTORVAULT_AGENT_ID", "mcp-smoke")
+            assert report["_meta"]["role"] == os.environ.get("VECTORVAULT_ROLE", "auditor")
+            data_plane = next(c for c in report["checks"] if c["name"] == "data_plane")
+            assert data_plane["status"] == "skip"  # not probed → no S3 Vectors read
 
             unknown = json.loads(_text(await session.call_tool("__mcp_smoke_unknown__", {})))
             assert "unknown tool" in unknown["error"]

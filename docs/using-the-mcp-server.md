@@ -66,12 +66,35 @@ writes. List-valued results (`retrieve_memory`, `list_memories`) are wrapped as
 effective `agent_id`, `role`, default/allowed indexes, expected `team_id`, and
 inferred project slug — zero AWS calls.
 
+### Self-diagnostics — the `doctor` tool
+
+The server also exposes a read-only **`doctor`** tool (reusing `vectorvault.doctor.
+run_doctor()`, the same engine behind the `vv doctor` CLI). It checks the Python
+runtime, the installed `mcp` version, AWS identity, the `/vectorvault` SSM contract,
+and — for a scoped role — SourceIdentity role assumption, using the exact
+`AWS_REGION` / `VECTORVAULT_ROLE` / `VECTORVAULT_AGENT_ID` / `AWS_PROFILE` the server
+started with. It returns the same structured report the CLI prints (`healthy`,
+`exit_code`, `context`, `checks`) plus the standard `_meta` echo.
+
+It **never embeds, writes, or mutates memory.** The one optional live read is gated
+behind `probe_data_plane` (default `false`); set it `true` to perform a single
+read-only S3 Vectors `list` on the shared index:
+
+```json
+{"probe_data_plane": true}
+```
+
+Call `doctor` from inside a session when other tools return credential / SSM / role
+errors — it isolates whether the fault is AWS auth, region, or the SSM config, without
+leaving the MCP channel. When the server can't start at all (so no tool is reachable),
+fall back to the bootstrap path: `vv doctor` from the shell.
+
 ### Automated protocol smoke test
 
 The repository includes an opt-in smoke test for the real `vectorvault-mcp` stdio
-entrypoint. It initializes an MCP session, lists tools and schemas, calls `whoami`,
-and checks a structured unknown-tool response without embedding, writing, or deleting
-memory:
+entrypoint. It initializes an MCP session, lists tools and schemas, calls `whoami`
+and the read-only `doctor` tool, and checks a structured unknown-tool response
+without embedding, writing, or deleting memory:
 
 ```bash
 VECTORVAULT_RUN_INTEGRATION=1 AWS_PROFILE=<your-profile> \
@@ -439,6 +462,7 @@ memory; scope it and you stay within one tenant's corpus.
 |---|---|
 | `claude mcp list` shows ✗ / failed to connect | Path to `vectorvault-mcp` must be **absolute** (canonical: `~/.venvs/vectorvault/bin/vectorvault-mcp`); confirm the Step 0 install and that `AWS_PROFILE` is set in the server `env`. |
 | Server rejects a role/feature that's in the docs (e.g. `auditor`) | The global venv was installed **non-editable** and snapshots old code. Reinstall editable: `~/.venvs/vectorvault/bin/pip install -e "<repo>[mcp]"` — then upgrades are just `git pull`. |
+| Tool calls fail with credential / SSM / role errors, cause unclear | Call the read-only **`doctor`** tool in-session (or `vv doctor` from the shell if the server won't start) — it pinpoints AWS auth vs. region vs. SSM config vs. role assumption. |
 | `Token has expired` / `sso` errors in tool results | `aws sso login --profile <your-profile>` — **that's it; no restart.** The server's role credentials auto-refresh (`RefreshableCredentials`), and each refresh re-reads the SSO token cache, so the next tool call heals a still-running server. Manual lever if ever needed: `/mcp` → reconnect (Claude Code) or restart the session (Grok/Codex). |
 | `retrieve_memory` returns nothing | Check the `filters` (`team_id`/`task_id`) match what was stored; try without filters; expired/superseded/archived memories don't surface. |
 | Tool call denied on a private index | A role reaches only `shared-team-memory` + its own private index — index isolation working as intended. |
