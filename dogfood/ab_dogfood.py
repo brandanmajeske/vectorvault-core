@@ -84,19 +84,23 @@ def run_arm(client, question: dict[str, Any], budget: int, now: int) -> dict[str
     packed_real = sum(real_tokens(h.content) for h in hits)
     stale = sum(1 for h in hits if _is_stale(h, now))
 
-    # Downstream consumer: can it complete from the PACKED summaries alone?
+    # Downstream SUMMARY-PRESENCE PROXY (NOT a real consumer): we only check whether
+    # the memory the task would need (answer_task_id) is already present in the packed
+    # summaries. No consumer produces an answer and no answer correctness is evaluated;
+    # downstream.task / answer_keywords are documentation of intent only. A genuine
+    # V-57 consumer pass (LLM answering + correctness scoring) is still required.
     down = question["downstream"]
     answer_task = down["answer_task_id"]
     packed_task_ids = set(task_ids)
-    extra_hydrations = 0
-    regenerated_tokens = 0
+    forced_hydrations = 0
+    forced_hydration_tokens = 0
     if answer_task in packed_task_ids:
-        task_completed = True
+        answer_summary_present = True
     else:
-        # Consumer is forced to hydrate the answer memory it expected — this is the
-        # regeneration cost the budget cut caused.
-        extra_hydrations = 1
-        # Find the answer memory's key via a wide retrieve (diagnostic only) then hydrate.
+        # The needed memory was NOT packed under this budget: a real consumer would be
+        # forced to hydrate it. Count the real tokens of that body as the proxy cost.
+        answer_summary_present = False
+        forced_hydrations = 1
         wide = client.retrieve_memory(
             question["query"], filters=filters, top_k=TOP_K,
             max_tokens=CONTROL_BUDGET, detail_level="summary",
@@ -107,10 +111,7 @@ def run_arm(client, question: dict[str, Any], budget: int, now: int) -> dict[str
         if answer_key:
             hy = client.hydrate_memory([answer_key], max_keys=1, max_tokens=CONTROL_BUDGET)
             body = hy.memories[0].content if hy.memories else None
-            regenerated_tokens = real_tokens(body)
-            task_completed = bool(body)
-        else:
-            task_completed = False
+            forced_hydration_tokens = real_tokens(body)
 
     return {
         "recall_at_10": recall,
@@ -120,9 +121,9 @@ def run_arm(client, question: dict[str, Any], budget: int, now: int) -> dict[str
         "latency_ms": latency_ms,
         "retrieved_keys": keys,
         "retrieved_task_ids": [t for t in task_ids if t],
-        "task_completed": task_completed,
-        "extra_hydrations": extra_hydrations,
-        "regenerated_tokens": regenerated_tokens,
+        "answer_summary_present": answer_summary_present,
+        "forced_hydrations_proxy": forced_hydrations,
+        "forced_hydration_tokens_proxy": forced_hydration_tokens,
     }
 
 
@@ -141,22 +142,22 @@ def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "recall_stddev": statistics.pstdev(recalls) if len(recalls) > 1 else 0.0,
         "total_tokens_packed_real": total("tokens_packed_real"),
         "total_tokens_packed_est": total("tokens_packed_est"),
-        "total_regenerated_tokens": total("regenerated_tokens"),
-        "net_tokens_real": total("tokens_packed_real") + total("regenerated_tokens"),
+        "total_forced_hydration_tokens_proxy": total("forced_hydration_tokens_proxy"),
+        "net_tokens_real": total("tokens_packed_real") + total("forced_hydration_tokens_proxy"),
         "stale_packed": total("stale_packed"),
-        "extra_hydrations": total("extra_hydrations"),
-        "task_success_rate": mean("task_completed"),
+        "forced_hydrations_proxy": total("forced_hydrations_proxy"),
+        "answer_summary_present_rate": mean("answer_summary_present"),
         "mean_latency_ms": mean("latency_ms"),
     }
 
 
 def gate(control: dict[str, Any], candidate: dict[str, Any], max_run_stddev: float) -> dict[str, Any]:
     checks = {
-        "no_task_success_regression": candidate["task_success_rate"] >= control["task_success_rate"],
+        "no_answer_presence_regression": candidate["answer_summary_present_rate"] >= control["answer_summary_present_rate"],
         "recall_at_least_0.90": candidate["mean_recall_at_10"] >= 0.90,
         "recall_not_worse_than_control": candidate["mean_recall_at_10"] >= control["mean_recall_at_10"],
         "zero_stale_packed": candidate["stale_packed"] == 0,
-        "no_material_hydration_increase": candidate["extra_hydrations"] <= control["extra_hydrations"],
+        "no_material_forced_hydration_increase": candidate["forced_hydrations_proxy"] <= control["forced_hydrations_proxy"],
         "net_real_token_reduction": candidate["net_tokens_real"] < control["net_tokens_real"],
         # Stability is per-question run-to-run variance (ANN drift), NOT cross-question
         # spread. max_run_stddev is the largest per-question recall stddev across repeats.
@@ -207,6 +208,20 @@ def main() -> None:
         "aggregate": {"control": control_agg, "candidate": candidate_agg},
         "candidate_gate": verdict,
         "max_per_question_run_stddev": max_run_stddev,
+        "downstream_measure": (
+            "SUMMARY-PRESENCE PROXY, not a real consumer: answer_summary_present is "
+            "True iff the needed memory (answer_task_id) is in the packed set. No LLM "
+            "consumer answers and no answer correctness is scored. A genuine V-57 "
+            "consumer pass is still required."
+        ),
+        "latency_note": (
+            "Arms run sequentially and are not randomized; latency differences are "
+            "observational only and must not be read as caused by the budget."
+        ),
+        "estimator_note": (
+            "chars/4 UNDER-counts vs o200k_base on this corpus (~5%); a real tokenizer "
+            "should precede any default change."
+        ),
         "per_question": per_question,
         "environment_note": (
             "MemoryResearcherRole assume failed (bmaj lacks sts:SetSourceIdentity); "

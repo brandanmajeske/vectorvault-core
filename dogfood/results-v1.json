@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_epoch": 1787866321,
+  "generated_at_epoch": 1787866505,
   "arms": {
     "control_max_tokens": 4000,
     "candidate_max_tokens": 750
@@ -14,43 +14,46 @@
       "mean_recall_at_10": 0.9,
       "min_recall_at_10": 0.5,
       "recall_stddev": 0.2,
-      "total_tokens_packed_real": 26724,
+      "total_tokens_packed_real": 26757,
       "total_tokens_packed_est": 25328,
-      "total_regenerated_tokens": 0,
-      "net_tokens_real": 26724,
+      "total_forced_hydration_tokens_proxy": 0,
+      "net_tokens_real": 26757,
       "stale_packed": 0,
-      "extra_hydrations": 0,
-      "task_success_rate": 1.0,
-      "mean_latency_ms": 180.66053679212928
+      "forced_hydrations_proxy": 0,
+      "answer_summary_present_rate": 1.0,
+      "mean_latency_ms": 163.43148408050183
     },
     "candidate": {
       "runs": 40,
       "mean_recall_at_10": 0.9,
       "min_recall_at_10": 0.5,
       "recall_stddev": 0.2,
-      "total_tokens_packed_real": 24996,
-      "total_tokens_packed_est": 23662,
-      "total_regenerated_tokens": 0,
-      "net_tokens_real": 24996,
+      "total_tokens_packed_real": 24938,
+      "total_tokens_packed_est": 23587,
+      "total_forced_hydration_tokens_proxy": 0,
+      "net_tokens_real": 24938,
       "stale_packed": 0,
-      "extra_hydrations": 0,
-      "task_success_rate": 1.0,
-      "mean_latency_ms": 140.19889442715794
+      "forced_hydrations_proxy": 0,
+      "answer_summary_present_rate": 1.0,
+      "mean_latency_ms": 126.46111782523803
     }
   },
   "candidate_gate": {
     "pass": true,
     "checks": {
-      "no_task_success_regression": true,
+      "no_answer_presence_regression": true,
       "recall_at_least_0.90": true,
       "recall_not_worse_than_control": true,
       "zero_stale_packed": true,
-      "no_material_hydration_increase": true,
+      "no_material_forced_hydration_increase": true,
       "net_real_token_reduction": true,
       "stable_repeats": true
     }
   },
   "max_per_question_run_stddev": 0.0,
+  "downstream_measure": "SUMMARY-PRESENCE PROXY, not a real consumer: answer_summary_present is True iff the needed memory (answer_task_id) is in the packed set. No LLM consumer answers and no answer correctness is scored. A genuine V-57 consumer pass is still required.",
+  "latency_note": "Arms run sequentially and are not randomized; latency differences are observational only and must not be read as caused by the budget.",
+  "estimator_note": "chars/4 UNDER-counts vs o200k_base on this corpus (~5%); a real tokenizer should precede any default change.",
   "per_question": {
     "fabric-onboarding": {
       "control": {
@@ -60,12 +63,12 @@
         "recall_stddev": 0.0,
         "total_tokens_packed_real": 3744,
         "total_tokens_packed_est": 4144,
-        "total_regenerated_tokens": 0,
+        "total_forced_hydration_tokens_proxy": 0,
         "net_tokens_real": 3744,
         "stale_packed": 0,
-        "extra_hydrations": 0,
-        "task_success_rate": 1.0,
-        "mean_latency_ms": 325.8895828621462
+        "forced_hydrations_proxy": 0,
+        "answer_summary_present_rate": 1.0,
+        "mean_latency_ms": 275.9876335330773
       },
       "candidate": {
         "runs": 8,
@@ -74,12 +77,12 @@
         "recall_stddev": 0.0,
         "total_tokens_packed_real": 3744,
         "total_tokens_packed_est": 4144,
-        "total_regenerated_tokens": 0,
+        "total_forced_hydration_tokens_proxy": 0,
         "net_tokens_real": 3744,
         "stale_packed": 0,
-        "extra_hydrations": 0,
-        "task_success_rate": 1.0,
-        "mean_latency_ms": 160.34415847389027
+        "forced_hydrations_proxy": 0,
+        "answer_summary_present_rate": 1.0,
+        "mean_latency_ms": 126.58628638018854
       }
     },
     "project-state": {
@@ -90,12 +93,12 @@
         "recall_stddev": 0.0,
         "total_tokens_packed_real": 4352,
         "total_tokens_packed_est": 3768,
-        "total_regenerated_tokens": 0,
+        "total_forced_hydration_tokens_proxy": 0,
         "net_tokens_real": 4352,
         "stale_packed": 0,
-        "extra_hydrations": 0,
-        "task_success_rate": 1.0,
-        "mean_latency_ms": 159.13694049231708
+        "forced_hydrations_proxy": 0,
+        "answer_summary_present_rate": 1.0,
+        "mean_latency_ms": 140.57003236666787
       },
       "candidate": {
         "runs": 8,
@@ -104,12 +107,12 @@
         "recall_stddev": 0.0,
         "total_tokens_packed_real": 4352,
         "total_tokens_packed_est": 3768,
-        "total_regenerated_tokens": 0,
+        "total_forced_hydration_tokens_proxy": 0,
         "net_tokens_real": 4352,
         "stale_packed": 0,
-        "extra_hydrations": 0,
-        "task_success_rate": 1.0,
-        "mean_latency_ms": 147.07888664270286
+        "forced_hydrations_proxy": 0,
+        "answer_summary_present_rate": 1.0,
+        "mean_latency_ms": 131.22778499382548
       }
     },
     "working-set-handoff": {
@@ -120,12 +123,12 @@
         "recall_stddev": 0.0,
         "total_tokens_packed_real": 6304,
         "total_tokens_packed_est": 6072,
-        "total_regenerated_tokens": 0,
+        "total_forced_hydration_tokens_proxy": 0,
         "net_tokens_real": 6304,
         "stale_packed": 0,
-        "extra_hydrations": 0,
-        "task_success_rate": 1.0,
-        "mean_latency_ms": 132.91500211926177
+        "forced_hydrations_proxy": 0,
+        "answer_summary_present_rate": 1.0,
+        "mean_latency_ms": 131.2817225116305
       },
       "candidate": {
         "runs": 8,
@@ -134,12 +137,12 @@
         "recall_stddev": 0.0,
         "total_tokens_packed_real": 6072,
         "total_tokens_packed_est": 5888,
-        "total_regenerated_tokens": 0,
+        "total_forced_hydration_tokens_proxy": 0,
         "net_tokens_real": 6072,
         "stale_packed": 0,
-        "extra_hydrations": 0,
-        "task_success_rate": 1.0,
-        "mean_latency_ms": 127.53828364657238
+        "forced_hydrations_proxy": 0,
+        "answer_summary_present_rate": 1.0,
+        "mean_latency_ms": 124.80057687207591
       }
     },
     "supersession": {
@@ -150,12 +153,12 @@
         "recall_stddev": 0.0,
         "total_tokens_packed_real": 5224,
         "total_tokens_packed_est": 4720,
-        "total_regenerated_tokens": 0,
+        "total_forced_hydration_tokens_proxy": 0,
         "net_tokens_real": 5224,
         "stale_packed": 0,
-        "extra_hydrations": 0,
-        "task_success_rate": 1.0,
-        "mean_latency_ms": 155.7454183785012
+        "forced_hydrations_proxy": 0,
+        "answer_summary_present_rate": 1.0,
+        "mean_latency_ms": 132.6953774841968
       },
       "candidate": {
         "runs": 8,
@@ -164,12 +167,12 @@
         "recall_stddev": 0.0,
         "total_tokens_packed_real": 5224,
         "total_tokens_packed_est": 4720,
-        "total_regenerated_tokens": 0,
+        "total_forced_hydration_tokens_proxy": 0,
         "net_tokens_real": 5224,
         "stale_packed": 0,
-        "extra_hydrations": 0,
-        "task_success_rate": 1.0,
-        "mean_latency_ms": 138.51421351137105
+        "forced_hydrations_proxy": 0,
+        "answer_summary_present_rate": 1.0,
+        "mean_latency_ms": 125.55409224296454
       }
     },
     "exact-ticket-id": {
@@ -178,28 +181,28 @@
         "mean_recall_at_10": 1.0,
         "min_recall_at_10": 1.0,
         "recall_stddev": 0.0,
-        "total_tokens_packed_real": 7100,
+        "total_tokens_packed_real": 7133,
         "total_tokens_packed_est": 6624,
-        "total_regenerated_tokens": 0,
-        "net_tokens_real": 7100,
+        "total_forced_hydration_tokens_proxy": 0,
+        "net_tokens_real": 7133,
         "stale_packed": 0,
-        "extra_hydrations": 0,
-        "task_success_rate": 1.0,
-        "mean_latency_ms": 129.61574010842014
+        "forced_hydrations_proxy": 0,
+        "answer_summary_present_rate": 1.0,
+        "mean_latency_ms": 136.62265450693667
       },
       "candidate": {
         "runs": 8,
         "mean_recall_at_10": 1.0,
         "min_recall_at_10": 1.0,
         "recall_stddev": 0.0,
-        "total_tokens_packed_real": 5604,
-        "total_tokens_packed_est": 5142,
-        "total_regenerated_tokens": 0,
-        "net_tokens_real": 5604,
+        "total_tokens_packed_real": 5546,
+        "total_tokens_packed_est": 5067,
+        "total_forced_hydration_tokens_proxy": 0,
+        "net_tokens_real": 5546,
         "stale_packed": 0,
-        "extra_hydrations": 0,
-        "task_success_rate": 1.0,
-        "mean_latency_ms": 127.51892986125313
+        "forced_hydrations_proxy": 0,
+        "answer_summary_present_rate": 1.0,
+        "mean_latency_ms": 124.1368486371357
       }
     }
   },
