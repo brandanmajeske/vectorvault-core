@@ -9,5 +9,5 @@ def test_score_answer_requires_each_concept_group():
 
 
 def test_arm_order_alternates_to_reduce_order_bias():
-    assert arm_order(0) == [("control", 4000), ("candidate", 750)]
-    assert arm_order(1) == [("candidate", 750), ("control", 4000)]
+    assert arm_order(0, 4000, 1000) == [("control", 4000), ("candidate", 1000)]
+    assert arm_order(1, 4000, 1000) == [("candidate", 1000), ("control", 4000)]

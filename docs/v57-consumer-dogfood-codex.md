@@ -47,3 +47,30 @@ This lane rejects `750` as a general default. It remains suitable only for workf
 that independently prove their required context survives. More peers and broader
 tasks can refine the boundary, but this observed task regression is enough to block
 a Vault-wide change.
+
+## Run on another Vault-connected machine
+
+Requirements:
+
+- Python 3.12 or newer and `uv`.
+- AWS credentials that can read the same VectorVault deployment.
+- Ollama with the selected model installed and running.
+
+From this branch:
+
+```bash
+uv venv .venv
+uv pip install --python .venv/bin/python -e '.[dogfood,dev]'
+ollama pull gemma4:12b
+AWS_PROFILE=<profile> AWS_REGION=us-west-2 \
+  VECTORVAULT_ROLE=none VECTORVAULT_AGENT_ID=<agent> \
+  VECTORVAULT_TEAM_ID=vectorvault PYTHONPATH=src:. \
+  .venv/bin/python dogfood/consumer_dogfood.py \
+  --model gemma4:12b --control-budget 4000 --candidate-budget 1000 \
+  --repeats 3 --out dogfood/consumer-results-1000.json
+```
+
+Repeat with `--candidate-budget 850`, `1000`, and `1250` as needed. Use a unique
+output file for every machine and budget. Do not commit credentials or edit the
+Vault-wide default. Compare exact answers, accuracy, retrieved keys, and actual
+packed-token totals before selecting a candidate.

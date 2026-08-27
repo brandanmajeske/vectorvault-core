@@ -14,8 +14,6 @@ import tiktoken
 
 from vectorvault.mcp_server import build_from_env
 
-CONTROL_BUDGET = 4000
-CANDIDATE_BUDGET = 750
 ENCODING = tiktoken.get_encoding("o200k_base")
 TASKS = [
     {
@@ -47,8 +45,8 @@ def score_answer(answer: str, criteria: list[list[str]]) -> bool:
     return all(any(term.casefold() in lowered for term in group) for group in criteria)
 
 
-def arm_order(repeat: int) -> list[tuple[str, int]]:
-    arms = [("control", CONTROL_BUDGET), ("candidate", CANDIDATE_BUDGET)]
+def arm_order(repeat: int, control_budget: int, candidate_budget: int) -> list[tuple[str, int]]:
+    arms = [("control", control_budget), ("candidate", candidate_budget)]
     return arms if repeat % 2 == 0 else list(reversed(arms))
 
 
@@ -79,14 +77,22 @@ def main() -> None:
     parser.add_argument("--model", default="gemma4:12b")
     parser.add_argument("--ollama", default="http://localhost:11434")
     parser.add_argument("--repeats", type=int, default=2)
+    parser.add_argument("--control-budget", type=int, default=4000)
+    parser.add_argument("--candidate-budget", type=int, default=750)
     parser.add_argument("--out", default="dogfood/consumer-results-codex-v1.json")
     args = parser.parse_args()
+    if args.repeats < 1:
+        parser.error("--repeats must be at least 1")
+    if args.control_budget < 1 or args.candidate_budget < 1:
+        parser.error("budgets must be positive")
 
     _tools, client = build_from_env()
     runs: list[dict[str, Any]] = []
     for repeat in range(args.repeats):
         for task in TASKS:
-            for arm, budget in arm_order(repeat):
+            for arm, budget in arm_order(
+                repeat, args.control_budget, args.candidate_budget
+            ):
                 started = time.monotonic()
                 hits = client.retrieve_memory(
                     task["query"], filters=task["filters"], top_k=10,
@@ -124,6 +130,11 @@ def main() -> None:
         "model": args.model,
         "consumer": "Ollama chat completion over packed summaries only",
         "arm_order": "alternated by repeat",
+        "budgets": {
+            "control": args.control_budget,
+            "candidate": args.candidate_budget,
+        },
+        "repeats": args.repeats,
         "aggregate": aggregate,
         "runs": runs,
     }
