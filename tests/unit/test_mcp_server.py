@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import json
 
-from vectorvault.mcp_server import dispatch
+from vectorvault.doctor import DoctorCheck, DoctorReport
+from vectorvault.mcp_server import dispatch, dispatch_doctor, doctor_report
 from vectorvault.tools import create_memory_tools
 
 BASE = {"team_id": "research-alpha", "task_id": "q2", "memory_type": "semantic"}
@@ -59,3 +60,68 @@ def test_auditor_cannot_dispatch_mutating_verbs(client):
         "retrieve_memory", "retrieve_pack", "hydrate_memory", "fetch_working_set",
         "expand_cites", "galaxy_search", "list_memories", "get_memory", "linked_by",
     }
+
+
+# --- doctor tool (read-only diagnostics) ---------------------------------------
+
+def _fake_report(role="planner", agent_id="mcp-agent"):
+    return DoctorReport(
+        region="us-west-2",
+        role=role,
+        agent_id=agent_id,
+        profile="provider-dev",
+        checks=(DoctorCheck("runtime", "pass", "Python 3.12.0"),),
+    )
+
+
+def test_doctor_report_reads_env_and_defaults_probe_off(monkeypatch):
+    monkeypatch.setenv("AWS_REGION", "us-west-2")
+    monkeypatch.setenv("VECTORVAULT_ROLE", "Auditor")  # normalized to lowercase
+    monkeypatch.setenv("VECTORVAULT_AGENT_ID", "claude-vv")
+    monkeypatch.setenv("AWS_PROFILE", "provider-dev")
+
+    captured = {}
+
+    def fake_run(**kwargs):
+        captured.update(kwargs)
+        return _fake_report(role="auditor", agent_id="claude-vv")
+
+    out = doctor_report({}, run=fake_run)
+
+    assert captured == {
+        "region": "us-west-2",
+        "role": "auditor",
+        "agent_id": "claude-vv",
+        "profile": "provider-dev",
+        "probe_data_plane": False,
+    }
+    assert out["healthy"] is True
+    assert out["_meta"] == {"agent_id": "claude-vv", "role": "auditor"}
+
+
+def test_doctor_report_passes_probe_flag(monkeypatch):
+    monkeypatch.delenv("VECTORVAULT_ROLE", raising=False)
+    monkeypatch.delenv("VECTORVAULT_AGENT_ID", raising=False)
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+
+    captured = {}
+
+    def fake_run(**kwargs):
+        captured.update(kwargs)
+        return _fake_report()
+
+    doctor_report({"probe_data_plane": True}, run=fake_run)
+
+    assert captured["probe_data_plane"] is True
+    # Defaults mirror build_from_env when the env vars are unset.
+    assert captured["role"] == "planner"
+    assert captured["agent_id"] == "mcp-agent"
+    assert captured["profile"] is None
+
+
+def test_dispatch_doctor_returns_json(monkeypatch):
+    monkeypatch.setattr("vectorvault.mcp_server.run_doctor", lambda **_kwargs: _fake_report())
+    out = json.loads(dispatch_doctor({}))
+    assert out["healthy"] is True
+    assert out["context"]["role"] == "planner"
+    assert out["_meta"]["agent_id"] == "mcp-agent"

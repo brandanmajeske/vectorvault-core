@@ -35,6 +35,7 @@ import sys
 from typing import Any
 
 from vectorvault import Config, MemoryClient
+from vectorvault.doctor import run_doctor
 from vectorvault.tools import (
     MemoryTool,
     _source_identity,
@@ -44,6 +45,29 @@ from vectorvault.tools import (
 )
 
 SERVER_NAME = "vectorvault"
+
+DOCTOR_TOOL_NAME = "doctor"
+DOCTOR_DESCRIPTION = (
+    "Read-only setup diagnostics for this MCP server. Reuses vectorvault.doctor."
+    "run_doctor() to check the Python runtime, mcp dependency version, AWS identity, "
+    "the /vectorvault SSM contract, and (for a scoped role) SourceIdentity role "
+    "assumption. Returns the same structured report the `vv doctor` CLI prints. "
+    "Never embeds, writes, archives, restores, or deletes memory — call it first when "
+    "other tools fail to see whether the fault is credentials, region, or SSM config."
+)
+DOCTOR_TOOL_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "probe_data_plane": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "When true, perform ONE read-only S3 Vectors list on the shared index "
+                "to confirm data-plane read access. Still never embeds or writes."
+            ),
+        }
+    },
+}
 
 
 def _truthy(val: str | None) -> bool:
@@ -94,6 +118,40 @@ def dispatch(tools: list[MemoryTool], client: MemoryClient, name: str, arguments
     return json.dumps(execute_tool(tools, client, name, arguments), default=str)
 
 
+def doctor_report(arguments: dict[str, Any] | None, *, run: Any = None) -> dict[str, Any]:
+    """Run read-only diagnostics from the MCP environment and return the report dict.
+
+    Resolves region/role/agent_id/profile from the same env vars as
+    :func:`build_from_env` (so the doctor reports on the identity this server would
+    actually use), reads ``probe_data_plane`` from the tool arguments (default off),
+    and appends the standard ``_meta`` echo. ``run`` is a dependency-injection seam
+    (defaults to :func:`vectorvault.doctor.run_doctor`, resolved at call time so tests
+    can monkeypatch the module attribute); it never invokes Bedrock or mutates memory.
+    Imports no MCP symbols, so it is unit-testable without the optional ``mcp``
+    dependency installed.
+    """
+    run = run or run_doctor
+    region = os.environ.get("AWS_REGION", "us-west-2")
+    role = os.environ.get("VECTORVAULT_ROLE", "planner").strip().lower()
+    agent_id = os.environ.get("VECTORVAULT_AGENT_ID", "mcp-agent")
+    profile = os.environ.get("AWS_PROFILE")
+    probe_data_plane = bool((arguments or {}).get("probe_data_plane", False))
+
+    report = run(
+        region=region,
+        role=role,
+        agent_id=agent_id,
+        profile=profile,
+        probe_data_plane=probe_data_plane,
+    )
+    return {**report.as_dict(), "_meta": {"agent_id": agent_id, "role": role}}
+
+
+def dispatch_doctor(arguments: dict[str, Any] | None) -> str:
+    """Run the doctor tool and return its report as a JSON string (the MCP result)."""
+    return json.dumps(doctor_report(arguments), default=str)
+
+
 def main() -> None:
     """Entry point (console script ``vectorvault-mcp``). Serves the tools over stdio.
 
@@ -107,7 +165,7 @@ def main() -> None:
     tools, client = build_from_env()
     by_name = {t.name: t for t in tools}
     print(
-        f"[vectorvault-mcp] serving {len(tools)} tools as agent "
+        f"[vectorvault-mcp] serving {len(tools)} memory tools + doctor as agent "
         f"'{client.agent_id}' (role surface: {tools[0].allowed_indexes})",
         file=sys.stderr,
     )
@@ -116,21 +174,32 @@ def main() -> None:
 
     @server.list_tools()
     async def _list_tools() -> list[types.Tool]:
-        return [
+        listed = [
             types.Tool(name=t.name, description=t.description, inputSchema=t.input_schema)
             for t in tools
         ]
+        # Read-only diagnostics, available to every role (including auditor).
+        listed.append(
+            types.Tool(
+                name=DOCTOR_TOOL_NAME,
+                description=DOCTOR_DESCRIPTION,
+                inputSchema=DOCTOR_TOOL_SCHEMA,
+            )
+        )
+        return listed
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict[str, Any] | None) -> list[types.TextContent]:
-        if name not in by_name:
+        if name == DOCTOR_TOOL_NAME:
+            # boto3 is blocking; run off the event loop so protocol pings stay responsive.
+            text = await anyio.to_thread.run_sync(dispatch_doctor, arguments or {})
+        elif name not in by_name:
             text = json.dumps({
                 "error": f"unknown tool: {name}",
-                "available": list(by_name),
+                "available": [*by_name, DOCTOR_TOOL_NAME],
                 "_meta": {"agent_id": client.agent_id, "role": tools[0].role if tools else None},
             })
         else:
-            # boto3 is blocking; run off the event loop so protocol pings stay responsive.
             text = await anyio.to_thread.run_sync(dispatch, tools, client, name, arguments or {})
         return [types.TextContent(type="text", text=text)]
 
