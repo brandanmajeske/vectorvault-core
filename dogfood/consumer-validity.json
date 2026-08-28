@@ -1,0 +1,27 @@
+{
+  "control_budget": 4000,
+  "tasks_total": 4,
+  "tasks_valid": 4,
+  "per_task": [
+    {
+      "task_id": "v19-attribution",
+      "control_valid": true,
+      "control_missing_groups": []
+    },
+    {
+      "task_id": "cdk-deploy-order",
+      "control_valid": true,
+      "control_missing_groups": []
+    },
+    {
+      "task_id": "ttl-dryrun-flag",
+      "control_valid": true,
+      "control_missing_groups": []
+    },
+    {
+      "task_id": "packs-review-followups",
+      "control_valid": true,
+      "control_missing_groups": []
+    }
+  ]
+}

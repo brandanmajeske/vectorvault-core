@@ -30,6 +30,10 @@ e2e = [
     "anthropic>=0.40",
     "openai>=1.40",
 ]
+dogfood = [
+    "requests>=2.31",
+    "tiktoken>=0.7",
+]
 
 [project.scripts]
 vectorvault-mcp = "vectorvault.mcp_server:main"

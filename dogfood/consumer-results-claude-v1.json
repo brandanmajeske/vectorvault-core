@@ -1,0 +1,312 @@
+{
+  "per_cell": [
+    {
+      "task_id": "v19-attribution",
+      "budget": 4000,
+      "arm": "control",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 951,
+      "savings_pct_vs_control": 0.0,
+      "answer_chars": 675
+    },
+    {
+      "task_id": "v19-attribution",
+      "budget": 800,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 744,
+      "savings_pct_vs_control": 21.8,
+      "answer_chars": 587
+    },
+    {
+      "task_id": "v19-attribution",
+      "budget": 750,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 727,
+      "savings_pct_vs_control": 23.6,
+      "answer_chars": 661
+    },
+    {
+      "task_id": "v19-attribution",
+      "budget": 700,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 608,
+      "savings_pct_vs_control": 36.1,
+      "answer_chars": 606
+    },
+    {
+      "task_id": "v19-attribution",
+      "budget": 650,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 608,
+      "savings_pct_vs_control": 36.1,
+      "answer_chars": 605
+    },
+    {
+      "task_id": "v19-attribution",
+      "budget": 600,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 535,
+      "savings_pct_vs_control": 43.7,
+      "answer_chars": 593
+    },
+    {
+      "task_id": "cdk-deploy-order",
+      "budget": 4000,
+      "arm": "control",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 800,
+      "savings_pct_vs_control": 0.0,
+      "answer_chars": 668
+    },
+    {
+      "task_id": "cdk-deploy-order",
+      "budget": 800,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 649,
+      "savings_pct_vs_control": 18.9,
+      "answer_chars": 678
+    },
+    {
+      "task_id": "cdk-deploy-order",
+      "budget": 750,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 649,
+      "savings_pct_vs_control": 18.9,
+      "answer_chars": 694
+    },
+    {
+      "task_id": "cdk-deploy-order",
+      "budget": 700,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 649,
+      "savings_pct_vs_control": 18.9,
+      "answer_chars": 648
+    },
+    {
+      "task_id": "cdk-deploy-order",
+      "budget": 650,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 574,
+      "savings_pct_vs_control": 28.2,
+      "answer_chars": 637
+    },
+    {
+      "task_id": "cdk-deploy-order",
+      "budget": 600,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 455,
+      "savings_pct_vs_control": 43.1,
+      "answer_chars": 686
+    },
+    {
+      "task_id": "ttl-dryrun-flag",
+      "budget": 4000,
+      "arm": "control",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 898,
+      "savings_pct_vs_control": 0.0,
+      "answer_chars": 644
+    },
+    {
+      "task_id": "ttl-dryrun-flag",
+      "budget": 800,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 738,
+      "savings_pct_vs_control": 17.8,
+      "answer_chars": 358
+    },
+    {
+      "task_id": "ttl-dryrun-flag",
+      "budget": 750,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 613,
+      "savings_pct_vs_control": 31.7,
+      "answer_chars": 443
+    },
+    {
+      "task_id": "ttl-dryrun-flag",
+      "budget": 700,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 613,
+      "savings_pct_vs_control": 31.7,
+      "answer_chars": 629
+    },
+    {
+      "task_id": "ttl-dryrun-flag",
+      "budget": 650,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 613,
+      "savings_pct_vs_control": 31.7,
+      "answer_chars": 726
+    },
+    {
+      "task_id": "ttl-dryrun-flag",
+      "budget": 600,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 540,
+      "savings_pct_vs_control": 39.9,
+      "answer_chars": 586
+    },
+    {
+      "task_id": "packs-review-followups",
+      "budget": 4000,
+      "arm": "control",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 940,
+      "savings_pct_vs_control": 0.0,
+      "answer_chars": 2255
+    },
+    {
+      "task_id": "packs-review-followups",
+      "budget": 800,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 764,
+      "savings_pct_vs_control": 18.7,
+      "answer_chars": 1950
+    },
+    {
+      "task_id": "packs-review-followups",
+      "budget": 750,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 645,
+      "savings_pct_vs_control": 31.4,
+      "answer_chars": 2597
+    },
+    {
+      "task_id": "packs-review-followups",
+      "budget": 700,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 645,
+      "savings_pct_vs_control": 31.4,
+      "answer_chars": 2169
+    },
+    {
+      "task_id": "packs-review-followups",
+      "budget": 650,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 520,
+      "savings_pct_vs_control": 44.7,
+      "answer_chars": 1757
+    },
+    {
+      "task_id": "packs-review-followups",
+      "budget": 600,
+      "arm": "candidate",
+      "correct": true,
+      "insufficient": false,
+      "missing_groups": [],
+      "packed_tokens": 520,
+      "savings_pct_vs_control": 44.7,
+      "answer_chars": 1739
+    }
+  ],
+  "by_budget": [
+    {
+      "budget": 4000,
+      "arm": "control",
+      "accuracy": "4/4",
+      "insufficient": 0,
+      "mean_savings_pct": 0.0
+    },
+    {
+      "budget": 800,
+      "arm": "candidate",
+      "accuracy": "4/4",
+      "insufficient": 0,
+      "mean_savings_pct": 19.3
+    },
+    {
+      "budget": 750,
+      "arm": "candidate",
+      "accuracy": "4/4",
+      "insufficient": 0,
+      "mean_savings_pct": 26.4
+    },
+    {
+      "budget": 700,
+      "arm": "candidate",
+      "accuracy": "4/4",
+      "insufficient": 0,
+      "mean_savings_pct": 29.5
+    },
+    {
+      "budget": 650,
+      "arm": "candidate",
+      "accuracy": "4/4",
+      "insufficient": 0,
+      "mean_savings_pct": 35.2
+    },
+    {
+      "budget": 600,
+      "arm": "candidate",
+      "accuracy": "4/4",
+      "insufficient": 0,
+      "mean_savings_pct": 42.9
+    }
+  ]
+}

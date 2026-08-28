@@ -1,0 +1,6 @@
+# Raw run artifacts embed live Vault summaries (machine identifiers, real
+# email addresses). Reproducible via prep_real.py + a consumer model; never commit.
+cells/
+cells2/
+answers2/
+prep-budgets.json

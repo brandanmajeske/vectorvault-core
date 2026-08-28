@@ -1,0 +1,559 @@
+{
+  "control": 4000,
+  "top_k": 10,
+  "queries": [
+    {
+      "query": "SourceIdentity attribution stored_by principal",
+      "control_budget": 4000,
+      "control_keys": 10,
+      "control_tokens": 818,
+      "top1_key": "mem_claude-vv_v1.9-attribution_7028780ed0790bd0_v1",
+      "arms": [
+        {
+          "budget": 500,
+          "keys": 5,
+          "tokens": 426,
+          "savings_pct": 47.9,
+          "top1_survives": true,
+          "recall_vs_control": 0.5
+        },
+        {
+          "budget": 600,
+          "keys": 7,
+          "tokens": 513,
+          "savings_pct": 37.3,
+          "top1_survives": true,
+          "recall_vs_control": 0.7
+        },
+        {
+          "budget": 700,
+          "keys": 8,
+          "tokens": 586,
+          "savings_pct": 28.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 750,
+          "keys": 8,
+          "tokens": 586,
+          "savings_pct": 28.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 800,
+          "keys": 9,
+          "tokens": 695,
+          "savings_pct": 15.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 850,
+          "keys": 9,
+          "tokens": 695,
+          "savings_pct": 15.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 900,
+          "keys": 10,
+          "tokens": 818,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 1000,
+          "keys": 10,
+          "tokens": 818,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 1250,
+          "keys": 10,
+          "tokens": 818,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 1500,
+          "keys": 10,
+          "tokens": 818,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 2000,
+          "keys": 10,
+          "tokens": 818,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        }
+      ]
+    },
+    {
+      "query": "CDK deploy order stacks SSM contract",
+      "control_budget": 4000,
+      "control_keys": 10,
+      "control_tokens": 907,
+      "top1_key": "mem_claude-vv_deploy-ops_6de08168d487e922_v1",
+      "arms": [
+        {
+          "budget": 500,
+          "keys": 6,
+          "tokens": 459,
+          "savings_pct": 49.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.6
+        },
+        {
+          "budget": 600,
+          "keys": 6,
+          "tokens": 459,
+          "savings_pct": 49.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.6
+        },
+        {
+          "budget": 700,
+          "keys": 8,
+          "tokens": 653,
+          "savings_pct": 28.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 750,
+          "keys": 8,
+          "tokens": 653,
+          "savings_pct": 28.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 800,
+          "keys": 8,
+          "tokens": 653,
+          "savings_pct": 28.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 850,
+          "keys": 9,
+          "tokens": 775,
+          "savings_pct": 14.6,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 900,
+          "keys": 9,
+          "tokens": 775,
+          "savings_pct": 14.6,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 1000,
+          "keys": 10,
+          "tokens": 907,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 1250,
+          "keys": 10,
+          "tokens": 907,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 1500,
+          "keys": 10,
+          "tokens": 907,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 2000,
+          "keys": 10,
+          "tokens": 907,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        }
+      ]
+    },
+    {
+      "query": "TTL lifecycle superseded archived deleted flag",
+      "control_budget": 4000,
+      "control_keys": 10,
+      "control_tokens": 931,
+      "top1_key": "mem_claude-vv_deploy-ops_e474dd0ae0821b1a_v1",
+      "arms": [
+        {
+          "budget": 500,
+          "keys": 5,
+          "tokens": 391,
+          "savings_pct": 58.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.5
+        },
+        {
+          "budget": 600,
+          "keys": 6,
+          "tokens": 510,
+          "savings_pct": 45.2,
+          "top1_survives": true,
+          "recall_vs_control": 0.6
+        },
+        {
+          "budget": 700,
+          "keys": 7,
+          "tokens": 635,
+          "savings_pct": 31.8,
+          "top1_survives": true,
+          "recall_vs_control": 0.7
+        },
+        {
+          "budget": 750,
+          "keys": 8,
+          "tokens": 708,
+          "savings_pct": 24.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 800,
+          "keys": 8,
+          "tokens": 708,
+          "savings_pct": 24.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 850,
+          "keys": 8,
+          "tokens": 708,
+          "savings_pct": 24.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 900,
+          "keys": 9,
+          "tokens": 830,
+          "savings_pct": 10.8,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 1000,
+          "keys": 10,
+          "tokens": 931,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 1250,
+          "keys": 10,
+          "tokens": 931,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 1500,
+          "keys": 10,
+          "tokens": 931,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 2000,
+          "keys": 10,
+          "tokens": 931,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        }
+      ]
+    },
+    {
+      "query": "retrieve_pack session bootstrap pack registry",
+      "control_budget": 4000,
+      "control_keys": 10,
+      "control_tokens": 930,
+      "top1_key": "mem_claude-vv_packs-review-followups_945f841220e7af61_v1",
+      "arms": [
+        {
+          "budget": 500,
+          "keys": 4,
+          "tokens": 424,
+          "savings_pct": 54.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.4
+        },
+        {
+          "budget": 600,
+          "keys": 6,
+          "tokens": 549,
+          "savings_pct": 41.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.6
+        },
+        {
+          "budget": 700,
+          "keys": 7,
+          "tokens": 648,
+          "savings_pct": 30.3,
+          "top1_survives": true,
+          "recall_vs_control": 0.7
+        },
+        {
+          "budget": 750,
+          "keys": 7,
+          "tokens": 648,
+          "savings_pct": 30.3,
+          "top1_survives": true,
+          "recall_vs_control": 0.7
+        },
+        {
+          "budget": 800,
+          "keys": 7,
+          "tokens": 648,
+          "savings_pct": 30.3,
+          "top1_survives": true,
+          "recall_vs_control": 0.7
+        },
+        {
+          "budget": 850,
+          "keys": 8,
+          "tokens": 770,
+          "savings_pct": 17.2,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 900,
+          "keys": 9,
+          "tokens": 843,
+          "savings_pct": 9.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 1000,
+          "keys": 10,
+          "tokens": 930,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 1250,
+          "keys": 10,
+          "tokens": 930,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 1500,
+          "keys": 10,
+          "tokens": 930,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 2000,
+          "keys": 10,
+          "tokens": 930,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        }
+      ]
+    },
+    {
+      "query": "Python 3.12 venv environment setup for the repo",
+      "control_budget": 4000,
+      "control_keys": 10,
+      "control_tokens": 908,
+      "top1_key": "mem_claude-vv_env-setup_c329eab17f7fb037_v1",
+      "arms": [
+        {
+          "budget": 500,
+          "keys": 6,
+          "tokens": 477,
+          "savings_pct": 47.5,
+          "top1_survives": true,
+          "recall_vs_control": 0.6
+        },
+        {
+          "budget": 600,
+          "keys": 7,
+          "tokens": 586,
+          "savings_pct": 35.5,
+          "top1_survives": true,
+          "recall_vs_control": 0.7
+        },
+        {
+          "budget": 700,
+          "keys": 7,
+          "tokens": 586,
+          "savings_pct": 35.5,
+          "top1_survives": true,
+          "recall_vs_control": 0.7
+        },
+        {
+          "budget": 750,
+          "keys": 8,
+          "tokens": 709,
+          "savings_pct": 21.9,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 800,
+          "keys": 9,
+          "tokens": 786,
+          "savings_pct": 13.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 850,
+          "keys": 9,
+          "tokens": 786,
+          "savings_pct": 13.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 900,
+          "keys": 9,
+          "tokens": 786,
+          "savings_pct": 13.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 1000,
+          "keys": 10,
+          "tokens": 908,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 1250,
+          "keys": 10,
+          "tokens": 908,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 1500,
+          "keys": 10,
+          "tokens": 908,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        },
+        {
+          "budget": 2000,
+          "keys": 10,
+          "tokens": 908,
+          "savings_pct": 0.0,
+          "top1_survives": true,
+          "recall_vs_control": 1.0
+        }
+      ]
+    }
+  ],
+  "aggregate": [
+    {
+      "budget": 500,
+      "mean_savings_pct": 51.4,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.52
+    },
+    {
+      "budget": 600,
+      "mean_savings_pct": 41.7,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.64
+    },
+    {
+      "budget": 700,
+      "mean_savings_pct": 30.8,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.74
+    },
+    {
+      "budget": 750,
+      "mean_savings_pct": 26.5,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.78
+    },
+    {
+      "budget": 800,
+      "mean_savings_pct": 22.1,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.82
+    },
+    {
+      "budget": 850,
+      "mean_savings_pct": 16.8,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.86
+    },
+    {
+      "budget": 900,
+      "mean_savings_pct": 9.6,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.92
+    },
+    {
+      "budget": 1000,
+      "mean_savings_pct": 0.0,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 1.0
+    },
+    {
+      "budget": 1250,
+      "mean_savings_pct": 0.0,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 1.0
+    },
+    {
+      "budget": 1500,
+      "mean_savings_pct": 0.0,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 1.0
+    },
+    {
+      "budget": 2000,
+      "mean_savings_pct": 0.0,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 1.0
+    }
+  ]
+}
