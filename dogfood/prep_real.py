@@ -108,7 +108,15 @@ def main() -> None:
                 "answer_file": f"dogfood/answers2/{task['id']}__{budget}.txt",
             })
     Path("dogfood/cells2/index.json").write_text(json.dumps(index, indent=2))
-    Path("dogfood/cells2/validity.json").write_text(json.dumps(validity, indent=2))
+    # Validity is TRACKED evidence (cells2/ is gitignored). It records only task
+    # ids + which rubric groups were missing at control — no summary text, no keys.
+    valid_summary = {
+        "control_budget": CONTROL,
+        "tasks_total": len(TASKS),
+        "tasks_valid": sum(v["control_valid"] for v in validity),
+        "per_task": validity,
+    }
+    Path("dogfood/consumer-validity.json").write_text(json.dumps(valid_summary, indent=2))
     Path("dogfood/answers2").mkdir(exist_ok=True)
     dropped = [v["task_id"] for v in validity if not v["control_valid"]]
     print(f"\nwrote {len(index)} cells to {cells_dir} "

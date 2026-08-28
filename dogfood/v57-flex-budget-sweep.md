@@ -73,7 +73,12 @@ Vault, a fresh Claude subagent answered each task fed ONLY the packed summaries 
 each budget. Tasks + rubrics are built by `dogfood/prep_real.py`; each rubric
 concept is verified present at the 4000 control before the run (all 4 valid).
 Answers scored by `dogfood/score_real.py` (a task passes only if EVERY rubric
-concept group appears). One subagent per (task, budget) = 12 runs, read-only.
+concept group appears). One subagent per (task, budget), read-only.
+
+`prep_real.py` **enforces** the control gate (not just prints it): a task whose
+rubric concepts are not all present at 4000 is dropped and never cell-ified. The
+result is tracked in `dogfood/consumer-validity.json` (task ids + missing groups
+only — no summary text, no keys): **4/4 tasks valid** for this run.
 
 Tasks: v1.9 attribution enforce, CDK deploy order, ttlDryRun flag, packs-review
 follow-ups (the last is multi-fact — needs several memories, the real truncation risk).
