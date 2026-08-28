@@ -1,0 +1,329 @@
+{
+  "control": 4000,
+  "top_k": 10,
+  "queries": [
+    {
+      "query": "SourceIdentity attribution stored_by principal",
+      "control_budget": 4000,
+      "control_keys": 10,
+      "control_tokens": 818,
+      "top1_key": "mem_claude-vv_v1.9-attribution_7028780ed0790bd0_v1",
+      "arms": [
+        {
+          "budget": 800,
+          "keys": 9,
+          "tokens": 695,
+          "savings_pct": 15.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 810,
+          "keys": 9,
+          "tokens": 695,
+          "savings_pct": 15.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 820,
+          "keys": 9,
+          "tokens": 695,
+          "savings_pct": 15.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 830,
+          "keys": 9,
+          "tokens": 695,
+          "savings_pct": 15.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 840,
+          "keys": 9,
+          "tokens": 695,
+          "savings_pct": 15.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 850,
+          "keys": 9,
+          "tokens": 695,
+          "savings_pct": 15.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        }
+      ]
+    },
+    {
+      "query": "CDK deploy order stacks SSM contract",
+      "control_budget": 4000,
+      "control_keys": 10,
+      "control_tokens": 907,
+      "top1_key": "mem_claude-vv_deploy-ops_6de08168d487e922_v1",
+      "arms": [
+        {
+          "budget": 800,
+          "keys": 8,
+          "tokens": 653,
+          "savings_pct": 28.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 810,
+          "keys": 8,
+          "tokens": 653,
+          "savings_pct": 28.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 820,
+          "keys": 8,
+          "tokens": 653,
+          "savings_pct": 28.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 830,
+          "keys": 9,
+          "tokens": 775,
+          "savings_pct": 14.6,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 840,
+          "keys": 9,
+          "tokens": 775,
+          "savings_pct": 14.6,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 850,
+          "keys": 9,
+          "tokens": 775,
+          "savings_pct": 14.6,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        }
+      ]
+    },
+    {
+      "query": "TTL lifecycle superseded archived deleted flag",
+      "control_budget": 4000,
+      "control_keys": 10,
+      "control_tokens": 931,
+      "top1_key": "mem_claude-vv_deploy-ops_e474dd0ae0821b1a_v1",
+      "arms": [
+        {
+          "budget": 800,
+          "keys": 8,
+          "tokens": 708,
+          "savings_pct": 24.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 810,
+          "keys": 8,
+          "tokens": 708,
+          "savings_pct": 24.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 820,
+          "keys": 8,
+          "tokens": 708,
+          "savings_pct": 24.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 830,
+          "keys": 8,
+          "tokens": 708,
+          "savings_pct": 24.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 840,
+          "keys": 8,
+          "tokens": 708,
+          "savings_pct": 24.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 850,
+          "keys": 8,
+          "tokens": 708,
+          "savings_pct": 24.0,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        }
+      ]
+    },
+    {
+      "query": "retrieve_pack session bootstrap pack registry",
+      "control_budget": 4000,
+      "control_keys": 10,
+      "control_tokens": 930,
+      "top1_key": "mem_claude-vv_packs-review-followups_945f841220e7af61_v1",
+      "arms": [
+        {
+          "budget": 800,
+          "keys": 7,
+          "tokens": 648,
+          "savings_pct": 30.3,
+          "top1_survives": true,
+          "recall_vs_control": 0.7
+        },
+        {
+          "budget": 810,
+          "keys": 7,
+          "tokens": 648,
+          "savings_pct": 30.3,
+          "top1_survives": true,
+          "recall_vs_control": 0.7
+        },
+        {
+          "budget": 820,
+          "keys": 8,
+          "tokens": 770,
+          "savings_pct": 17.2,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 830,
+          "keys": 8,
+          "tokens": 770,
+          "savings_pct": 17.2,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 840,
+          "keys": 8,
+          "tokens": 770,
+          "savings_pct": 17.2,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        },
+        {
+          "budget": 850,
+          "keys": 8,
+          "tokens": 770,
+          "savings_pct": 17.2,
+          "top1_survives": true,
+          "recall_vs_control": 0.8
+        }
+      ]
+    },
+    {
+      "query": "Python 3.12 venv environment setup for the repo",
+      "control_budget": 4000,
+      "control_keys": 10,
+      "control_tokens": 908,
+      "top1_key": "mem_claude-vv_env-setup_c329eab17f7fb037_v1",
+      "arms": [
+        {
+          "budget": 800,
+          "keys": 9,
+          "tokens": 786,
+          "savings_pct": 13.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 810,
+          "keys": 9,
+          "tokens": 786,
+          "savings_pct": 13.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 820,
+          "keys": 9,
+          "tokens": 786,
+          "savings_pct": 13.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 830,
+          "keys": 9,
+          "tokens": 786,
+          "savings_pct": 13.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 840,
+          "keys": 9,
+          "tokens": 786,
+          "savings_pct": 13.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        },
+        {
+          "budget": 850,
+          "keys": 9,
+          "tokens": 786,
+          "savings_pct": 13.4,
+          "top1_survives": true,
+          "recall_vs_control": 0.9
+        }
+      ]
+    }
+  ],
+  "aggregate": [
+    {
+      "budget": 800,
+      "mean_savings_pct": 22.1,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.82
+    },
+    {
+      "budget": 810,
+      "mean_savings_pct": 22.1,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.82
+    },
+    {
+      "budget": 820,
+      "mean_savings_pct": 19.5,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.84
+    },
+    {
+      "budget": 830,
+      "mean_savings_pct": 16.8,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.86
+    },
+    {
+      "budget": 840,
+      "mean_savings_pct": 16.8,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.86
+    },
+    {
+      "budget": 850,
+      "mean_savings_pct": 16.8,
+      "top1_survival": "5/5",
+      "mean_recall_vs_control": 0.86
+    }
+  ]
+}

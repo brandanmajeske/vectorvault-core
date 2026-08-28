@@ -1,4 +1,14 @@
-from dogfood.consumer_dogfood import arm_order, score_answer
+import pytest
+
+# The dogfood package lives at the repo root (not under src) and pulls the
+# optional [dogfood] extra (requests/tiktoken). CI installs only .[dev], so skip
+# cleanly there instead of erroring at collection. Runs locally with the extra.
+_dogfood = pytest.importorskip(
+    "dogfood.consumer_dogfood",
+    reason="install the [dogfood] extra and run from repo root to exercise these",
+)
+arm_order = _dogfood.arm_order
+score_answer = _dogfood.score_answer
 
 
 def test_score_answer_requires_each_concept_group():
